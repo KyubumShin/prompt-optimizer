@@ -1,0 +1,60 @@
+import logging
+from typing import List, Dict
+
+logger = logging.getLogger(__name__)
+
+IMPROVE_PROMPT = """You are an expert prompt engineer. Your task is to improve a prompt template based on evaluation feedback.
+
+Current Prompt Template:
+---
+{current_prompt}
+---
+
+Performance Summary:
+- Average Score: {avg_score:.2f} (target: {target_score:.2f})
+- Failure Patterns: {failure_patterns}
+- Specific Issues: {specific_issues}
+- Suggestions: {suggestions}
+
+The prompt template uses {{placeholder}} variables (e.g., {{input}}, {{text}}) that get filled with test case data. You MUST preserve all existing placeholder variables.
+
+Available placeholder variables: {available_columns}
+
+Generate an improved version of the prompt that addresses the identified issues. Respond with ONLY a JSON object:
+{{
+    "reasoning": "Explain what you changed and why",
+    "improved_prompt": "The full improved prompt template with {{placeholders}} preserved"
+}}"""
+
+async def improve_prompt(
+    llm_client,
+    current_prompt: str,
+    summary: Dict,
+    available_columns: List[str],
+    model: str,
+    target_score: float = 0.9,
+) -> Dict:
+    """Generate improved prompt based on failure summary. Returns {reasoning, improved_prompt}."""
+    prompt = IMPROVE_PROMPT.format(
+        current_prompt=current_prompt,
+        avg_score=summary["avg_score"],
+        target_score=target_score,
+        failure_patterns=", ".join(summary.get("failure_patterns", [])),
+        specific_issues=", ".join(summary.get("specific_issues", [])),
+        suggestions=", ".join(summary.get("suggestions", [])),
+        available_columns=", ".join(available_columns),
+    )
+
+    response = await llm_client.complete_json(prompt, model=model, temperature=0.7)
+
+    improved = response.get("improved_prompt", current_prompt)
+    reasoning = response.get("reasoning", "No reasoning provided")
+
+    if improved == current_prompt or not improved.strip():
+        logger.warning("Improver returned same or empty prompt, keeping current")
+        improved = current_prompt
+
+    return {
+        "reasoning": reasoning,
+        "improved_prompt": improved,
+    }

@@ -1,0 +1,11 @@
+text,expected_output
+"Hello, how are you?","Bonjour, comment allez-vous ?"
+"Good morning","Bonjour"
+"Thank you very much","Merci beaucoup"
+"What is your name?","Comment vous appelez-vous ?"
+"I love programming","J'adore la programmation"
+"The weather is nice today","Le temps est beau aujourd'hui"
+"See you tomorrow","A demain"
+"Have a good day","Bonne journée"
+"Where is the library?","Où est la bibliothèque ?"
+"I am happy","Je suis heureux"
