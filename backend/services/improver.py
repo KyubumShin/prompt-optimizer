@@ -33,6 +33,7 @@ async def improve_prompt(
     available_columns: List[str],
     model: str,
     target_score: float = 0.9,
+    summary_language: str = "English",
 ) -> Dict:
     """Generate improved prompt based on failure summary. Returns {reasoning, improved_prompt}."""
     prompt = IMPROVE_PROMPT.format(
@@ -44,6 +45,13 @@ async def improve_prompt(
         suggestions=", ".join(summary.get("suggestions", [])),
         available_columns=", ".join(available_columns),
     )
+
+    # Include user feedback if available
+    if summary.get("user_feedback"):
+        prompt += f"\n\nUser Feedback:\n{summary['user_feedback']}"
+
+    if summary_language and summary_language != "English":
+        prompt += f"\n\nIMPORTANT: Write your reasoning in {summary_language}."
 
     response = await llm_client.complete_json(prompt, model=model, temperature=0.7)
 

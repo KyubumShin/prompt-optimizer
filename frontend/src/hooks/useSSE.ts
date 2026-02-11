@@ -20,6 +20,7 @@ export function useSSE(
     const eventTypes = [
       'stage_start', 'test_progress', 'iteration_complete',
       'converged', 'completed', 'failed', 'stopped',
+      'feedback_requested',
     ]
 
     for (const type of eventTypes) {

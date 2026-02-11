@@ -18,6 +18,8 @@ class RunConfig(BaseModel):
     judge_prompt: Optional[str] = None
     convergence_threshold: float = 0.02
     convergence_patience: int = 2
+    human_feedback_enabled: bool = False
+    summary_language: str = "English"
 
 
 class RunCreate(BaseModel):
@@ -98,3 +100,8 @@ class RunDetailResponse(RunResponse):
 class IterationDetailResponse(IterationResponse):
     """Schema for detailed iteration responses with test results."""
     test_results: List[TestResultResponse] = []
+
+
+class FeedbackSubmit(BaseModel):
+    """Schema for submitting human feedback."""
+    feedback: str

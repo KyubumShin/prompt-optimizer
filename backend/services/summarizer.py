@@ -32,6 +32,7 @@ async def summarize_results(
     test_results: List[Dict],  # combined test + judge results
     judge_results_list: List[Dict],
     model: str,
+    summary_language: str = "English",
 ) -> Dict:
     """Aggregate judge reasoning into failure patterns. Returns summary dict."""
     scores = [j["score"] for j in judge_results_list]
@@ -62,6 +63,9 @@ async def summarize_results(
         failed_count=len(failures),
         failure_details=failure_details,
     )
+
+    if summary_language and summary_language != "English":
+        prompt += f"\n\nIMPORTANT: Write your response in {summary_language}."
 
     response = await llm_client.complete_json(prompt, model=model, temperature=0.3)
 

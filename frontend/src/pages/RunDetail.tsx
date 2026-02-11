@@ -2,11 +2,12 @@ import { useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useRun, useStopRun, useLogs } from '../hooks/useRuns'
 import { useSSE } from '../hooks/useSSE'
+import { submitFeedback } from '../lib/api'
 import StatusBadge from '../components/StatusBadge'
 import ScoreChart from '../components/ScoreChart'
 import PromptDiff from '../components/PromptDiff'
 import LogViewer from '../components/LogViewer'
-import type { SSEEvent } from '../types'
+import type { SSEEvent, FeedbackRequest } from '../types'
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +20,10 @@ export default function RunDetail() {
   const [diffLeft, setDiffLeft] = useState<number | null>(null)
   const [diffRight, setDiffRight] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
+  const [feedbackRequested, setFeedbackRequested] = useState(false)
+  const [feedbackText, setFeedbackText] = useState('')
+  const [feedbackSummary, setFeedbackSummary] = useState<FeedbackRequest | null>(null)
+  const [submittingFeedback, setSubmittingFeedback] = useState(false)
 
   const handleSSE = useCallback((event: SSEEvent) => {
     switch (event.event) {
@@ -31,6 +36,11 @@ export default function RunDetail() {
       case 'iteration_complete':
         setLiveStatus(`Iteration ${event.data.iteration} done: ${(event.data.avg_score * 100).toFixed(1)}%`)
         refetch()
+        break
+      case 'feedback_requested':
+        setFeedbackRequested(true)
+        setFeedbackSummary(event.data as FeedbackRequest)
+        setLiveStatus(`Iteration ${event.data.iteration}: Waiting for feedback...`)
         break
       case 'completed':
       case 'converged':
@@ -55,6 +65,30 @@ export default function RunDetail() {
       navigator.clipboard.writeText(run.best_prompt)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleSubmitFeedback = async () => {
+    setSubmittingFeedback(true)
+    try {
+      await submitFeedback(runId, feedbackText)
+      setFeedbackRequested(false)
+      setFeedbackText('')
+      setFeedbackSummary(null)
+    } finally {
+      setSubmittingFeedback(false)
+    }
+  }
+
+  const handleSkipFeedback = async () => {
+    setSubmittingFeedback(true)
+    try {
+      await submitFeedback(runId, '')
+      setFeedbackRequested(false)
+      setFeedbackText('')
+      setFeedbackSummary(null)
+    } finally {
+      setSubmittingFeedback(false)
     }
   }
 
@@ -97,6 +131,72 @@ export default function RunDetail() {
           </div>
         ))}
       </div>
+
+      {/* Feedback Panel */}
+      {feedbackRequested && feedbackSummary && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-amber-800">Feedback Requested</h2>
+            <span className="text-xs text-amber-600">Iteration {feedbackSummary.iteration}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="bg-white rounded p-2 text-center">
+              <span className="text-xs text-gray-500">Avg Score</span>
+              <p className="font-semibold">{(feedbackSummary.summary.avg_score * 100).toFixed(1)}%</p>
+            </div>
+            <div className="bg-white rounded p-2 text-center">
+              <span className="text-xs text-gray-500">Min Score</span>
+              <p className="font-semibold">{(feedbackSummary.summary.min_score * 100).toFixed(1)}%</p>
+            </div>
+            <div className="bg-white rounded p-2 text-center">
+              <span className="text-xs text-gray-500">Max Score</span>
+              <p className="font-semibold">{(feedbackSummary.summary.max_score * 100).toFixed(1)}%</p>
+            </div>
+          </div>
+          {feedbackSummary.summary.failure_patterns.length > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-amber-700 mb-1">Failure Patterns</h3>
+              <ul className="text-xs text-gray-700 list-disc list-inside">
+                {feedbackSummary.summary.failure_patterns.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+            </div>
+          )}
+          {feedbackSummary.summary.suggestions.length > 0 && (
+            <div>
+              <h3 className="text-xs font-medium text-amber-700 mb-1">Suggestions</h3>
+              <ul className="text-xs text-gray-700 list-disc list-inside">
+                {feedbackSummary.summary.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-amber-700 mb-1">Your Feedback (optional guidance for the improver)</label>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              rows={3}
+              className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              placeholder="e.g., Focus on handling edge cases better, or try a different approach for the failing patterns..."
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSubmitFeedback}
+              disabled={submittingFeedback}
+              className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm font-medium"
+            >
+              {submittingFeedback ? 'Submitting...' : 'Submit & Continue'}
+            </button>
+            <button
+              onClick={handleSkipFeedback}
+              disabled={submittingFeedback}
+              className="border border-amber-300 text-amber-700 px-4 py-2 rounded-lg hover:bg-amber-100 disabled:opacity-50 text-sm"
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Chart */}
       <div className="bg-white rounded-lg border p-4">

@@ -8,10 +8,10 @@ from sqlalchemy.orm import selectinload
 
 from ..database import get_db
 from ..models import Run, Iteration, TestResult, Log
-from ..schemas import RunCreate, RunResponse, RunDetailResponse, IterationResponse, IterationDetailResponse, TestResultResponse, LogResponse, RunConfig
+from ..schemas import RunCreate, RunResponse, RunDetailResponse, IterationResponse, IterationDetailResponse, TestResultResponse, LogResponse, RunConfig, FeedbackSubmit
 from ..config import Settings, get_settings
 from ..services.csv_loader import parse_csv, validate_prompt_columns
-from ..services.pipeline import run_pipeline, request_stop
+from ..services.pipeline import run_pipeline, request_stop, submit_feedback
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -131,6 +131,16 @@ async def stop_run(run_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, f"Run is not running (status: {run.status})")
     request_stop(run_id)
     return {"message": "Stop requested"}
+
+@router.post("/{run_id}/feedback")
+async def submit_run_feedback(run_id: int, body: FeedbackSubmit, db: AsyncSession = Depends(get_db)):
+    run = await db.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run.status != "running":
+        raise HTTPException(400, f"Run is not running (status: {run.status})")
+    submit_feedback(run_id, body.feedback)
+    return {"message": "Feedback submitted"}
 
 @router.delete("/{run_id}")
 async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):

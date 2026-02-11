@@ -60,3 +60,7 @@ export async function fetchCustomProviderModels(baseUrl: string, apiKey?: string
   const { data } = await client.post('/providers/custom/models', { base_url: baseUrl, api_key: apiKey })
   return data
 }
+
+export async function submitFeedback(runId: number, feedback: string): Promise<void> {
+  await client.post(`/runs/${runId}/feedback`, { feedback })
+}

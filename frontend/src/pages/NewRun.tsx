@@ -35,6 +35,8 @@ export default function NewRun() {
     judge_prompt: '',
     convergence_threshold: 0.02,
     convergence_patience: 2,
+    human_feedback_enabled: false,
+    summary_language: 'English',
   })
   const [error, setError] = useState('')
 
@@ -515,6 +517,42 @@ export default function NewRun() {
               placeholder="Leave empty for default judge prompt. Use {input_data}, {expected}, {actual} placeholders."
             />
           </div>
+
+          {/* Human Feedback Toggle */}
+          <div className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+            <div>
+              <label className="block text-xs font-medium text-gray-600">Human Feedback</label>
+              <p className="text-xs text-gray-400 mt-0.5">Pause after each summary for your review before improving</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setConfig({ ...config, human_feedback_enabled: !config.human_feedback_enabled })}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                config.human_feedback_enabled ? 'bg-indigo-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  config.human_feedback_enabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Summary Language */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Summary Language</label>
+            <select
+              value={config.summary_language}
+              onChange={(e) => setConfig({ ...config, summary_language: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              {['English', 'Korean', 'Japanese', 'Chinese', 'Spanish', 'French', 'German', 'Portuguese'].map((lang) => (
+                <option key={lang} value={lang}>{lang}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-3">
             <button onClick={() => setStep(2)} className="px-6 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">
               Back

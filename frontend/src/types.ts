@@ -12,6 +12,8 @@ export interface RunConfig {
   judge_prompt?: string
   convergence_threshold: number
   convergence_patience: number
+  human_feedback_enabled?: boolean
+  summary_language?: string
 }
 
 export interface Run {
@@ -101,4 +103,17 @@ export interface ProvidersResponse {
 export interface ProviderModelsResponse {
   models: string[]
   error?: string
+}
+
+export interface FeedbackRequest {
+  iteration: number
+  summary: {
+    avg_score: number
+    min_score: number
+    max_score: number
+    summary: string
+    failure_patterns: string[]
+    specific_issues: string[]
+    suggestions: string[]
+  }
 }

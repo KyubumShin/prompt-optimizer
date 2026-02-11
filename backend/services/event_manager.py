@@ -59,5 +59,8 @@ class EventManager:
     async def emit_stopped(self, run_id: int):
         await self.emit(run_id, "stopped", {})
 
+    async def emit_feedback_requested(self, run_id: int, iteration: int, summary_data: dict):
+        await self.emit(run_id, "feedback_requested", {"iteration": iteration, "summary": summary_data})
+
 # Global singleton
 event_manager = EventManager()

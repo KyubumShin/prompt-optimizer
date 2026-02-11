@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 # Track cancellation flags per run
 _cancel_flags: dict[int, bool] = {}
 
+# Track feedback events per run
+_feedback_events: dict[int, asyncio.Event] = {}
+_feedback_data: dict[int, str | None] = {}
+
+def submit_feedback(run_id: int, feedback: str):
+    """Called from API to submit user feedback for a waiting pipeline."""
+    _feedback_data[run_id] = feedback
+    event = _feedback_events.get(run_id)
+    if event:
+        event.set()
+
 def request_stop(run_id: int):
     _cancel_flags[run_id] = True
 
@@ -92,6 +103,8 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
             custom_judge_prompt = config.get("judge_prompt")
             convergence_threshold = config.get("convergence_threshold", settings.CONVERGENCE_THRESHOLD)
             convergence_patience = config.get("convergence_patience", settings.CONVERGENCE_PATIENCE)
+            human_feedback_enabled = config.get("human_feedback_enabled", False)
+            summary_language = config.get("summary_language", "English")
 
             current_prompt = run.initial_prompt
             best_score = 0.0
@@ -165,7 +178,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 await event_manager.emit_stage_start(run_id, "summarize", iter_num)
                 await _add_log(session, run_id, "summarize", "info", f"Iteration {iter_num}: Summarizing results", iteration.id)
 
-                summary = await summarize_results(improver_client, current_prompt, test_results_data, judge_results_data, model=improver_model)
+                summary = await summarize_results(improver_client, current_prompt, test_results_data, judge_results_data, model=improver_model, summary_language=summary_language)
 
                 # Update iteration with scores
                 iteration.avg_score = summary["avg_score"]
@@ -183,6 +196,31 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     iteration.id, {"summary": summary})
 
                 await event_manager.emit_iteration_complete(run_id, iter_num, summary["avg_score"], best_score)
+
+                # Human feedback checkpoint
+                if human_feedback_enabled and iter_num < max_iterations:
+                    await event_manager.emit_feedback_requested(run_id, iter_num, summary)
+                    await _add_log(session, run_id, "system", "info", f"Iteration {iter_num}: Waiting for human feedback", iteration.id)
+                    feedback_event = asyncio.Event()
+                    _feedback_events[run_id] = feedback_event
+                    _feedback_data[run_id] = None
+                    try:
+                        await asyncio.wait_for(feedback_event.wait(), timeout=1800)  # 30 min timeout
+                    except asyncio.TimeoutError:
+                        await _add_log(session, run_id, "system", "info", f"Iteration {iter_num}: Feedback timeout, continuing", iteration.id)
+                    finally:
+                        _feedback_events.pop(run_id, None)
+
+                    user_feedback = _feedback_data.pop(run_id, None)
+                    if user_feedback:
+                        summary["user_feedback"] = user_feedback
+                        await _add_log(session, run_id, "system", "info", f"Iteration {iter_num}: Received human feedback", iteration.id)
+
+                    if is_cancelled(run_id):
+                        run.status = "stopped"
+                        await event_manager.emit_stopped(run_id)
+                        await session.commit()
+                        return
 
                 # Check convergence
                 if summary["avg_score"] >= target_score:
@@ -227,6 +265,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     improvement = await improve_prompt(
                         improver_client, current_prompt, summary,
                         available_columns=input_columns, model=improver_model, target_score=target_score,
+                        summary_language=summary_language,
                     )
 
                     iteration.improvement_reasoning = improvement["reasoning"]
@@ -261,3 +300,5 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 logger.exception("Failed to update run status after error")
         finally:
             _cancel_flags.pop(run_id, None)
+            _feedback_events.pop(run_id, None)
+            _feedback_data.pop(run_id, None)
