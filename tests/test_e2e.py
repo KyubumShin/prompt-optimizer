@@ -203,6 +203,21 @@ def test_delete_run():
     print("  Verified: run deleted successfully")
 
 
+def cleanup_runs():
+    """Delete all existing runs for a clean test environment."""
+    print("\nCleaning up existing runs...")
+    r = requests.get(f"{BASE_URL}/api/runs")
+    if r.status_code == 200:
+        runs = r.json()
+        for run in runs:
+            requests.delete(f"{BASE_URL}/api/runs/{run['id']}")
+        if runs:
+            print(f"  Deleted {len(runs)} existing runs")
+            time.sleep(2)
+        else:
+            print("  No existing runs to clean up")
+
+
 def main():
     print("=" * 60)
     print("PROMPT OPTIMIZER - END TO END TEST")
@@ -214,6 +229,8 @@ def main():
         print("ERROR: Server not running. Start with:")
         print("  cd /Users/kbshin/project/prompt-optimizer/backend && python3 -m uvicorn backend.main:app --reload")
         sys.exit(1)
+
+    cleanup_runs()
 
     passed = 0
     failed = 0

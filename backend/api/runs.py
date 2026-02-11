@@ -97,6 +97,8 @@ async def get_iteration(run_id: int, iter_num: int, db: AsyncSession = Depends(g
         select(Iteration)
         .where(Iteration.run_id == run_id, Iteration.iteration_num == iter_num)
         .options(selectinload(Iteration.test_results))
+        .order_by(desc(Iteration.id))
+        .limit(1)
     )
     iteration = result.scalar_one_or_none()
     if not iteration:
