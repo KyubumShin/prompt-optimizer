@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
-import { useIteration } from '../hooks/useRuns'
+import { useIteration, useRun } from '../hooks/useRuns'
 import TestResultTable from '../components/TestResultTable'
 
 export default function IterationDetail() {
@@ -7,6 +7,8 @@ export default function IterationDetail() {
   const runId = Number(id)
   const iterNum = Number(num)
   const { data: iteration, isLoading } = useIteration(runId, iterNum)
+  const { data: run } = useRun(runId)
+  const imageColumns = (run?.config?.image_columns as string[] | undefined) || []
 
   if (isLoading) return <div className="text-center py-12 text-gray-400">Loading...</div>
   if (!iteration) return <div className="text-center py-12 text-gray-400">Iteration not found</div>
@@ -66,7 +68,7 @@ export default function IterationDetail() {
       <div className="bg-white rounded-lg border p-4">
         <h2 className="text-lg font-semibold mb-4">Test Results</h2>
         {iteration.test_results && iteration.test_results.length > 0 ? (
-          <TestResultTable results={iteration.test_results} />
+          <TestResultTable results={iteration.test_results} imageColumns={imageColumns} />
         ) : (
           <p className="text-gray-400 text-sm">No test results</p>
         )}

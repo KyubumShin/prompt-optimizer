@@ -26,6 +26,16 @@ Analyze the failure patterns and provide a JSON response:
     "suggestions": ["suggestion1", "suggestion2"]
 }}"""
 
+VLM_SUMMARIZE_ADDENDUM = """
+
+NOTE: This is a VLM (Vision Language Model) task where images are provided alongside text input.
+Consider vision-specific failure patterns in your analysis:
+- Image misinterpretation (wrong objects, colors, or relationships identified)
+- Spatial reasoning errors (incorrect position, size, or layout descriptions)
+- OCR failures (misread text in images)
+- Visual hallucination (describing elements not present in the image)
+- Insufficient visual grounding (generic answers that ignore image content)"""
+
 async def summarize_results(
     llm_client,
     prompt_template: str,
@@ -33,6 +43,7 @@ async def summarize_results(
     judge_results_list: List[Dict],
     model: str,
     summary_language: str = "English",
+    is_vlm: bool = False,
 ) -> Dict:
     """Aggregate judge reasoning into failure patterns. Returns summary dict."""
     scores = [j["score"] for j in judge_results_list]
@@ -63,6 +74,9 @@ async def summarize_results(
         failed_count=len(failures),
         failure_details=failure_details,
     )
+
+    if is_vlm:
+        prompt += VLM_SUMMARIZE_ADDENDUM
 
     if summary_language and summary_language != "English":
         prompt += f"\n\nIMPORTANT: Write your response in {summary_language}."

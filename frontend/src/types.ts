@@ -14,6 +14,7 @@ export interface RunConfig {
   convergence_patience: number
   human_feedback_enabled?: boolean
   summary_language?: string
+  image_columns?: string[]
 }
 
 export interface Run {

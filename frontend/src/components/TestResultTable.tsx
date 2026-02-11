@@ -16,7 +16,42 @@ function scoreBg(score: number | null): string {
   return 'bg-red-50'
 }
 
-export default function TestResultTable({ results }: { results: TestResult[] }) {
+function isImageUrl(value: string): boolean {
+  if (!value) return false
+  const v = value.trim().toLowerCase()
+  return /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)/i.test(v)
+}
+
+function ImageThumbnail({ src }: { src: string }) {
+  const [showModal, setShowModal] = useState(false)
+  return (
+    <>
+      <img
+        src={src}
+        alt=""
+        className="w-10 h-10 object-cover rounded border cursor-pointer hover:opacity-80 inline-block"
+        onClick={() => setShowModal(true)}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+      />
+      {showModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowModal(false)}
+        >
+          <div className="max-w-3xl max-h-[80vh] p-2 bg-white rounded-lg" onClick={(e) => e.stopPropagation()}>
+            <img src={src} alt="" className="max-w-full max-h-[75vh] object-contain" />
+            <div className="text-center mt-2">
+              <a href={src} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">Open in new tab</a>
+              <button onClick={() => setShowModal(false)} className="ml-4 text-xs text-gray-500 hover:text-gray-700">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export default function TestResultTable({ results, imageColumns }: { results: TestResult[]; imageColumns?: string[] }) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
 
   const toggle = (id: number) => {
@@ -46,8 +81,19 @@ export default function TestResultTable({ results }: { results: TestResult[] }) 
             <Fragment key={r.id}>
               <tr className={clsx('border-b border-gray-100', scoreBg(r.score))}>
                 <td className="py-2 pr-3">{r.test_case_index + 1}</td>
-                <td className="py-2 pr-3 max-w-[200px] truncate" title={JSON.stringify(r.input_data)}>
-                  {Object.values(r.input_data).join(', ')}
+                <td className="py-2 pr-3 max-w-[200px]">
+                  <div className="flex items-center gap-1">
+                    {imageColumns && imageColumns.length > 0 && imageColumns.map((col) => {
+                      const val = r.input_data[col]
+                      return val && isImageUrl(val) ? <ImageThumbnail key={col} src={val} /> : null
+                    })}
+                    <span className="truncate" title={JSON.stringify(r.input_data)}>
+                      {Object.entries(r.input_data)
+                        .filter(([k]) => !imageColumns?.includes(k))
+                        .map(([, v]) => v)
+                        .join(', ')}
+                    </span>
+                  </div>
                 </td>
                 <td className="py-2 pr-3 max-w-[200px] truncate" title={r.expected_output}>
                   {r.expected_output}
@@ -73,6 +119,19 @@ export default function TestResultTable({ results }: { results: TestResult[] }) 
                     <div className="space-y-2">
                       <div>
                         <span className="font-medium text-gray-500 text-xs">Input Data:</span>
+                        {imageColumns && imageColumns.length > 0 && (
+                          <div className="flex gap-2 mt-1 mb-1">
+                            {imageColumns.map((col) => {
+                              const val = r.input_data[col]
+                              return val && isImageUrl(val) ? (
+                                <div key={col} className="text-center">
+                                  <ImageThumbnail src={val} />
+                                  <span className="text-xs text-gray-400 block">{col}</span>
+                                </div>
+                              ) : null
+                            })}
+                          </div>
+                        )}
                         <pre className="text-xs mt-1 bg-white p-2 rounded border">
                           {JSON.stringify(r.input_data, null, 2)}
                         </pre>

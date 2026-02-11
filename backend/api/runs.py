@@ -44,11 +44,20 @@ async def create_run(
     if expected_column not in dataset.columns:
         raise HTTPException(400, f"Expected column '{expected_column}' not found in CSV. Available: {dataset.columns}")
 
-    # Validate prompt placeholders
+    # Extract image columns from config
+    image_columns = config.image_columns or []
+
+    # Validate image columns exist in CSV
+    for ic in image_columns:
+        if ic not in dataset.columns:
+            raise HTTPException(400, f"Image column '{ic}' not found in CSV. Available: {dataset.columns}")
+
+    # Validate prompt placeholders (image columns are injected as images, not text placeholders)
     input_columns = [c for c in dataset.columns if c != expected_column]
-    missing = validate_prompt_columns(initial_prompt, input_columns)
+    text_columns = [c for c in input_columns if c not in image_columns]
+    missing = validate_prompt_columns(initial_prompt, text_columns)
     if missing:
-        raise HTTPException(400, f"Prompt references columns not in CSV: {missing}. Available: {input_columns}")
+        raise HTTPException(400, f"Prompt references columns not in CSV: {missing}. Available: {text_columns}")
 
     # Create run
     run = Run(
@@ -65,7 +74,7 @@ async def create_run(
     # Launch pipeline as background task
     from ..database import async_session_factory
     asyncio.create_task(
-        run_pipeline(run.id, async_session_factory, settings, dataset.rows, expected_column, input_columns)
+        run_pipeline(run.id, async_session_factory, settings, dataset.rows, expected_column, input_columns, image_columns=image_columns)
     )
 
     return run

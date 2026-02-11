@@ -38,6 +38,41 @@ class LLMClient:
                 await asyncio.sleep(wait)
         return ""
 
+    async def complete_vision(
+        self, text_content: str, images: list[dict],
+        model: str, temperature: float = 0.7,
+        system_prompt: str | None = None, max_retries: int = 5,
+    ) -> str:
+        """Call LLM with text + image content blocks (OpenAI vision format)."""
+        content: list[dict] = [{"type": "text", "text": text_content}] + images
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": content})
+
+        for attempt in range(max_retries):
+            try:
+                response = await self.client.chat.completions.create(
+                    model=model, messages=messages, temperature=temperature,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** (attempt + 1)
+                logger.warning(f"Vision call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait}s")
+                await asyncio.sleep(wait)
+        return ""
+
+    async def complete_json_vision(
+        self, text_content: str, images: list[dict],
+        model: str, temperature: float = 0.7,
+        system_prompt: str | None = None,
+    ) -> dict:
+        """Call LLM with vision and parse JSON response."""
+        raw = await self.complete_vision(text_content, images, model, temperature, system_prompt)
+        return self._parse_json(raw)
+
     async def complete_json(self, prompt: str, model: str, temperature: float = 0.7, system_prompt: str | None = None) -> dict:
         """Call LLM and parse JSON response. Strips markdown code blocks, uses regex fallback."""
         raw = await self.complete(prompt, model, temperature, system_prompt)
@@ -96,6 +131,48 @@ class AnthropicLLMClient:
                 logger.warning(f"Anthropic call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait}s")
                 await asyncio.sleep(wait)
         return ""
+
+    async def complete_vision(
+        self, text_content: str, images: list[dict],
+        model: str, temperature: float = 0.7,
+        system_prompt: str | None = None, max_retries: int = 5,
+    ) -> str:
+        """Call Anthropic API with text + image content blocks."""
+        content: list[dict] = images + [{"type": "text", "text": text_content}]
+
+        for attempt in range(max_retries):
+            try:
+                kwargs: dict = {
+                    "model": model,
+                    "max_tokens": 4096,
+                    "temperature": temperature,
+                    "messages": [{"role": "user", "content": content}],
+                }
+                if system_prompt:
+                    kwargs["system"] = system_prompt
+
+                response = await self.client.messages.create(**kwargs)
+                text_parts = []
+                for block in response.content:
+                    if block.type == "text":
+                        text_parts.append(block.text)
+                return "".join(text_parts)
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = 2 ** (attempt + 1)
+                logger.warning(f"Anthropic vision call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait}s")
+                await asyncio.sleep(wait)
+        return ""
+
+    async def complete_json_vision(
+        self, text_content: str, images: list[dict],
+        model: str, temperature: float = 0.7,
+        system_prompt: str | None = None,
+    ) -> dict:
+        """Call Anthropic with vision and parse JSON response."""
+        raw = await self.complete_vision(text_content, images, model, temperature, system_prompt)
+        return LLMClient._parse_json(raw)
 
     async def complete_json(self, prompt: str, model: str, temperature: float = 0.7, system_prompt: str | None = None) -> dict:
         """Call Anthropic and parse JSON response."""

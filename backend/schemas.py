@@ -20,6 +20,7 @@ class RunConfig(BaseModel):
     convergence_patience: int = 2
     human_feedback_enabled: bool = False
     summary_language: str = "English"
+    image_columns: list[str] = []  # columns containing image URLs/paths for VLM
 
 
 class RunCreate(BaseModel):
