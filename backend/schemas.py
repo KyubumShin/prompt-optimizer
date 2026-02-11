@@ -6,8 +6,11 @@ from datetime import datetime
 class RunConfig(BaseModel):
     """Configuration for an optimization run."""
     model: Optional[str] = None
+    model_provider: Optional[str] = None
     judge_model: Optional[str] = None
+    judge_provider: Optional[str] = None
     improver_model: Optional[str] = None
+    improver_provider: Optional[str] = None
     max_iterations: int = 10
     target_score: float = 0.9
     temperature: float = 0.7

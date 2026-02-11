@@ -1,12 +1,15 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateRun } from '../hooks/useRuns'
-import { fetchModels, fetchCustomModels } from '../lib/api'
+import { fetchProviders, fetchProviderModels, fetchCustomProviderModels } from '../lib/api'
+import type { Provider, ProviderDefaults } from '../types'
 
 interface CSVPreview {
   columns: string[]
   rows: string[][]
 }
+
+type StageKey = 'model' | 'judge' | 'improver'
 
 export default function NewRun() {
   const navigate = useNavigate()
@@ -20,8 +23,11 @@ export default function NewRun() {
   const [expectedColumn, setExpectedColumn] = useState('')
   const [config, setConfig] = useState({
     model: '',
+    model_provider: '',
     judge_model: '',
+    judge_provider: '',
     improver_model: '',
+    improver_provider: '',
     max_iterations: 10,
     target_score: 0.9,
     temperature: 0.7,
@@ -31,50 +37,106 @@ export default function NewRun() {
     convergence_patience: 2,
   })
   const [error, setError] = useState('')
-  const [availableModels, setAvailableModels] = useState<string[]>([])
-  const [modelDefaults, setModelDefaults] = useState<{ model: string; judge_model: string; improver_model: string } | null>(null)
-  const [modelsLoading, setModelsLoading] = useState(false)
-  const [modelsError, setModelsError] = useState('')
-  const [useCustomUrl, setUseCustomUrl] = useState(false)
+
+  // Provider state
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [defaults, setDefaults] = useState<ProviderDefaults | null>(null)
+  const [providersLoading, setProvidersLoading] = useState(false)
+  const [providersError, setProvidersError] = useState('')
+
+  // Per-provider model cache: { providerId: string[] }
+  const [modelCache, setModelCache] = useState<Record<string, string[]>>({})
+  const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
+  const [modelsError, setModelsError] = useState<Record<string, string>>({})
+
+  // Custom provider state
   const [customBaseUrl, setCustomBaseUrl] = useState('')
   const [customApiKey, setCustomApiKey] = useState('')
 
+  // Load providers when entering step 3
   useEffect(() => {
-    if (step === 3 && !useCustomUrl && availableModels.length === 0 && !modelsLoading) {
-      setModelsLoading(true)
-      setModelsError('')
-      fetchModels()
+    if (step === 3 && providers.length === 0 && !providersLoading) {
+      setProvidersLoading(true)
+      setProvidersError('')
+      fetchProviders()
         .then((res) => {
-          if (res.error) {
-            setModelsError(res.error)
-          } else {
-            setAvailableModels(res.models)
-            setModelDefaults(res.defaults)
-          }
+          setProviders(res.providers)
+          setDefaults(res.defaults)
+          // Set default providers if not already set
+          setConfig((prev) => ({
+            ...prev,
+            model_provider: prev.model_provider || res.defaults.model_provider,
+            judge_provider: prev.judge_provider || res.defaults.judge_provider,
+            improver_provider: prev.improver_provider || res.defaults.improver_provider,
+          }))
         })
-        .catch((e) => setModelsError(e.message || 'Failed to fetch models'))
-        .finally(() => setModelsLoading(false))
+        .catch((e) => setProvidersError(e.message || 'Failed to fetch providers'))
+        .finally(() => setProvidersLoading(false))
     }
   }, [step])
 
-  const handleFetchCustomModels = async () => {
-    if (!customBaseUrl.trim()) return
-    setModelsLoading(true)
-    setModelsError('')
+  // Load models when a provider is selected (for any stage)
+  const loadModelsForProvider = useCallback(async (providerId: string) => {
+    if (!providerId || modelCache[providerId] || modelsLoading[providerId]) return
+    if (providerId === 'custom') return // Custom handled separately
+
+    setModelsLoading((prev) => ({ ...prev, [providerId]: true }))
+    setModelsError((prev) => ({ ...prev, [providerId]: '' }))
     try {
-      const res = await fetchCustomModels(customBaseUrl, customApiKey || undefined)
+      const res = await fetchProviderModels(providerId)
       if (res.error) {
-        setModelsError(res.error)
-        setAvailableModels([])
+        setModelsError((prev) => ({ ...prev, [providerId]: res.error! }))
       } else {
-        setAvailableModels(res.models)
-        setModelDefaults(null)
+        setModelCache((prev) => ({ ...prev, [providerId]: res.models }))
       }
     } catch (e: any) {
-      setModelsError(e.message || 'Failed to fetch models')
-      setAvailableModels([])
+      setModelsError((prev) => ({ ...prev, [providerId]: e.message || 'Failed to fetch models' }))
     } finally {
-      setModelsLoading(false)
+      setModelsLoading((prev) => ({ ...prev, [providerId]: false }))
+    }
+  }, [modelCache, modelsLoading])
+
+  // Auto-load models for default providers when defaults are set
+  useEffect(() => {
+    if (defaults) {
+      const uniqueProviders = new Set([defaults.model_provider, defaults.judge_provider, defaults.improver_provider])
+      uniqueProviders.forEach((pid) => {
+        if (pid && pid !== 'custom') loadModelsForProvider(pid)
+      })
+    }
+  }, [defaults])
+
+  const handleProviderChange = (stage: StageKey, providerId: string) => {
+    const providerKey = stage === 'model' ? 'model_provider' : stage === 'judge' ? 'judge_provider' : 'improver_provider'
+    const modelKey = stage === 'model' ? 'model' : stage === 'judge' ? 'judge_model' : 'improver_model'
+    setConfig((prev) => ({ ...prev, [providerKey]: providerId, [modelKey]: '' }))
+    if (providerId !== 'custom') {
+      loadModelsForProvider(providerId)
+    }
+  }
+
+  const handleModelChange = (stage: StageKey, model: string) => {
+    const modelKey = stage === 'model' ? 'model' : stage === 'judge' ? 'judge_model' : 'improver_model'
+    setConfig((prev) => ({ ...prev, [modelKey]: model }))
+  }
+
+  const handleFetchCustomModels = async () => {
+    if (!customBaseUrl.trim()) return
+    setModelsLoading((prev) => ({ ...prev, custom: true }))
+    setModelsError((prev) => ({ ...prev, custom: '' }))
+    try {
+      const res = await fetchCustomProviderModels(customBaseUrl, customApiKey || undefined)
+      if (res.error) {
+        setModelsError((prev) => ({ ...prev, custom: res.error! }))
+        setModelCache((prev) => ({ ...prev, custom: [] }))
+      } else {
+        setModelCache((prev) => ({ ...prev, custom: res.models }))
+      }
+    } catch (e: any) {
+      setModelsError((prev) => ({ ...prev, custom: e.message || 'Failed to fetch models' }))
+      setModelCache((prev) => ({ ...prev, custom: [] }))
+    } finally {
+      setModelsLoading((prev) => ({ ...prev, custom: false }))
     }
   }
 
@@ -131,6 +193,94 @@ export default function NewRun() {
   }
 
   const inputColumns = csvPreview ? csvPreview.columns.filter((c) => c !== expectedColumn) : []
+
+  // Helper to get provider info for a stage
+  const getStageProvider = (stage: StageKey): string => {
+    if (stage === 'model') return config.model_provider
+    if (stage === 'judge') return config.judge_provider
+    return config.improver_provider
+  }
+
+  const getStageModel = (stage: StageKey): string => {
+    if (stage === 'model') return config.model
+    if (stage === 'judge') return config.judge_model
+    return config.improver_model
+  }
+
+  const getDefaultModel = (stage: StageKey): string => {
+    if (!defaults) return ''
+    if (stage === 'model') return defaults.model
+    if (stage === 'judge') return defaults.judge_model
+    return defaults.improver_model
+  }
+
+  const renderProviderModelSelector = (stage: StageKey, label: string) => {
+    const providerId = getStageProvider(stage)
+    const modelValue = getStageModel(stage)
+    const defaultModel = getDefaultModel(stage)
+    const models = modelCache[providerId] || []
+    const loading = modelsLoading[providerId] || false
+    const errorMsg = modelsError[providerId] || ''
+    const isCustom = providerId === 'custom'
+
+    return (
+      <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+        <label className="block text-xs font-semibold text-gray-700">{label}</label>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Provider</label>
+            <select
+              value={providerId}
+              onChange={(e) => handleProviderChange(stage, e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+            >
+              <option value="">Select provider...</option>
+              {providers.map((p) => (
+                <option key={p.id} value={p.id} disabled={!p.configured && p.id !== 'custom'}>
+                  {p.name}{!p.configured && p.id !== 'custom' ? ' (not configured)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Model</label>
+            {isCustom ? (
+              <select
+                value={modelValue}
+                onChange={(e) => handleModelChange(stage, e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+              >
+                <option value="">Select model...</option>
+                {models.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            ) : (
+              <select
+                value={modelValue}
+                onChange={(e) => handleModelChange(stage, e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                disabled={!providerId || loading}
+              >
+                <option value="">
+                  {loading ? 'Loading...' : defaultModel ? `Default (${defaultModel})` : 'Select model...'}
+                </option>
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}{m === defaultModel ? ' (default)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+        {errorMsg && <p className="text-xs text-red-500">{errorMsg}</p>}
+      </div>
+    )
+  }
+
+  // Check if any stage uses custom provider
+  const anyCustom = config.model_provider === 'custom' || config.judge_provider === 'custom' || config.improver_provider === 'custom'
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -284,31 +434,50 @@ export default function NewRun() {
       {/* Step 3: Configure Settings */}
       {step === 3 && (
         <div className="space-y-4">
+          {providersLoading && (
+            <p className="text-xs text-gray-500">Loading providers...</p>
+          )}
+          {providersError && (
+            <p className="text-xs text-red-500">Error loading providers: {providersError}</p>
+          )}
+
+          {/* Provider + Model selectors per stage */}
+          <div className="space-y-3">
+            {renderProviderModelSelector('model', 'Test Model')}
+            {renderProviderModelSelector('judge', 'Judge Model')}
+            {renderProviderModelSelector('improver', 'Improver Model')}
+          </div>
+
+          {/* Custom endpoint config (shown if any stage uses custom) */}
+          {anyCustom && (
+            <div className="border border-amber-200 bg-amber-50 rounded-lg p-4 space-y-2">
+              <label className="block text-sm font-medium text-amber-800">Custom Endpoint Configuration</label>
+              <input
+                type="text"
+                value={customBaseUrl}
+                onChange={(e) => setCustomBaseUrl(e.target.value)}
+                placeholder="https://api.example.com/v1"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                type="password"
+                value={customApiKey}
+                onChange={(e) => setCustomApiKey(e.target.value)}
+                placeholder="API Key (optional, uses server key if empty)"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <button
+                onClick={handleFetchCustomModels}
+                disabled={!customBaseUrl.trim() || modelsLoading['custom']}
+                className="px-4 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm hover:bg-amber-200 disabled:opacity-50"
+              >
+                {modelsLoading['custom'] ? 'Fetching...' : 'Fetch Models'}
+              </button>
+            </div>
+          )}
+
+          {/* Hyperparameters */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Test Model</label>
-              <select value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="">{modelDefaults ? `Server default (${modelDefaults.model})` : 'Server default'}</option>
-                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Judge Model</label>
-              <select value={config.judge_model} onChange={(e) => setConfig({ ...config, judge_model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="">{modelDefaults ? `Server default (${modelDefaults.judge_model})` : 'Server default'}</option>
-                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Improver Model</label>
-              <select value={config.improver_model} onChange={(e) => setConfig({ ...config, improver_model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="">{modelDefaults ? `Server default (${modelDefaults.improver_model})` : 'Server default'}</option>
-                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Max Iterations</label>
               <input type="number" value={config.max_iterations} onChange={(e) => setConfig({ ...config, max_iterations: parseInt(e.target.value) || 10 })}
@@ -335,70 +504,7 @@ export default function NewRun() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
-          {/* Custom URL toggle */}
-          <div className="border border-gray-200 rounded-lg p-4 space-y-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useCustomUrl}
-                onChange={(e) => {
-                  setUseCustomUrl(e.target.checked)
-                  if (!e.target.checked) {
-                    setCustomBaseUrl('')
-                    setCustomApiKey('')
-                    setAvailableModels([])
-                    setModelDefaults(null)
-                    setModelsError('')
-                    setModelsLoading(true)
-                    fetchModels()
-                      .then((res) => {
-                        if (res.error) {
-                          setModelsError(res.error)
-                        } else {
-                          setAvailableModels(res.models)
-                          setModelDefaults(res.defaults)
-                        }
-                      })
-                      .catch((e) => setModelsError(e.message || 'Failed to fetch models'))
-                      .finally(() => setModelsLoading(false))
-                  }
-                }}
-                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-              />
-              <span className="text-sm font-medium text-gray-700">Use Custom OpenAI-Compatible URL</span>
-            </label>
-            {useCustomUrl && (
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={customBaseUrl}
-                  onChange={(e) => setCustomBaseUrl(e.target.value)}
-                  placeholder="https://api.example.com/v1"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => setCustomApiKey(e.target.value)}
-                  placeholder="API Key (optional, uses server key if empty)"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={handleFetchCustomModels}
-                  disabled={!customBaseUrl.trim() || modelsLoading}
-                  className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-50"
-                >
-                  {modelsLoading ? 'Fetching...' : 'Fetch Models'}
-                </button>
-              </div>
-            )}
-            {modelsLoading && !useCustomUrl && (
-              <p className="text-xs text-gray-500">Loading available models...</p>
-            )}
-            {modelsError && (
-              <p className="text-xs text-red-500">Error: {modelsError}</p>
-            )}
-          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Custom Judge Prompt (optional)</label>
             <textarea

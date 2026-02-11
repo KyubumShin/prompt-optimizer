@@ -1,7 +1,10 @@
 export interface RunConfig {
   model?: string
+  model_provider?: string
   judge_model?: string
+  judge_provider?: string
   improver_model?: string
+  improver_provider?: string
   max_iterations: number
   target_score: number
   temperature: number
@@ -75,14 +78,27 @@ export interface SSEEvent {
   data: Record<string, any>
 }
 
-export interface ModelsResponse {
-  models: string[]
-  base_url: string
-  defaults: { model: string; judge_model: string; improver_model: string }
-  error?: string
+export interface Provider {
+  id: string
+  name: string
+  configured: boolean
 }
 
-export interface CustomModelsResponse {
+export interface ProviderDefaults {
+  model: string
+  model_provider: string
+  judge_model: string
+  judge_provider: string
+  improver_model: string
+  improver_provider: string
+}
+
+export interface ProvidersResponse {
+  providers: Provider[]
+  defaults: ProviderDefaults
+}
+
+export interface ProviderModelsResponse {
   models: string[]
   error?: string
 }

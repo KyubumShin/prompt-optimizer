@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from ..config import Settings
 from ..models import Run, Iteration, TestResult, Log
-from .llm_client import LLMClient
+from .llm_client import LLMClient, create_llm_client
 from .tester import run_tests
 from .judge import judge_results
 from .summarizer import summarize_results
@@ -31,6 +31,39 @@ async def _add_log(session: AsyncSession, run_id: int, stage: str, level: str, m
     session.add(log)
     await session.flush()
 
+
+def _resolve_client(settings: Settings, config: dict, stage: str) -> tuple:
+    """Resolve provider + model + client for a pipeline stage.
+
+    Returns (client, model_name).
+    Falls back to legacy single-provider config for backward compatibility.
+    """
+    if stage == "test":
+        provider_id = config.get("model_provider")
+        model_name = config.get("model") or settings.OPENAI_MODEL
+    elif stage == "judge":
+        provider_id = config.get("judge_provider")
+        model_name = config.get("judge_model") or settings.JUDGE_MODEL
+    elif stage == "improver":
+        provider_id = config.get("improver_provider")
+        model_name = config.get("improver_model") or settings.IMPROVER_MODEL
+    else:
+        provider_id = None
+        model_name = config.get("model") or settings.OPENAI_MODEL
+
+    # If a provider is specified, build a client for it
+    if provider_id:
+        providers = settings.get_providers()
+        provider = next((p for p in providers if p["id"] == provider_id), None)
+        if provider and provider["configured"] and provider["api_key"]:
+            client = create_llm_client(provider["provider_type"], provider["api_key"], provider["base_url"])
+            return client, model_name
+
+    # Fallback: use legacy single-provider config
+    client = LLMClient(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
+    return client, model_name
+
+
 async def run_pipeline(run_id: int, session_factory, settings: Settings, test_cases: list[dict], expected_col: str, input_columns: list[str]):
     """Main pipeline orchestrator. Runs as an asyncio task."""
     _cancel_flags[run_id] = False
@@ -46,11 +79,12 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
             await session.commit()
 
             config = run.config or {}
-            llm = LLMClient(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_BASE_URL)
 
-            model = config.get("model") or settings.OPENAI_MODEL
-            judge_model = config.get("judge_model") or settings.JUDGE_MODEL
-            improver_model = config.get("improver_model") or settings.IMPROVER_MODEL
+            # Resolve per-stage clients
+            test_client, model = _resolve_client(settings, config, "test")
+            judge_client, judge_model = _resolve_client(settings, config, "judge")
+            improver_client, improver_model = _resolve_client(settings, config, "improver")
+
             max_iterations = config.get("max_iterations", settings.DEFAULT_MAX_ITERATIONS)
             target_score = config.get("target_score", settings.DEFAULT_TARGET_SCORE)
             temperature = config.get("temperature", settings.DEFAULT_TEMPERATURE)
@@ -88,7 +122,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     await event_manager.emit_test_progress(run_id, completed, total)
 
                 test_results_data = await run_tests(
-                    llm, current_prompt, test_cases, expected_col,
+                    test_client, current_prompt, test_cases, expected_col,
                     model=model, temperature=temperature, concurrency=concurrency,
                     on_progress=on_progress,
                 )
@@ -104,7 +138,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 await _add_log(session, run_id, "judge", "info", f"Iteration {iter_num}: Judging results", iteration.id)
 
                 judge_results_data = await judge_results(
-                    llm, test_results_data, judge_model=judge_model,
+                    judge_client, test_results_data, judge_model=judge_model,
                     custom_judge_prompt=custom_judge_prompt, concurrency=concurrency,
                 )
 
@@ -131,7 +165,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 await event_manager.emit_stage_start(run_id, "summarize", iter_num)
                 await _add_log(session, run_id, "summarize", "info", f"Iteration {iter_num}: Summarizing results", iteration.id)
 
-                summary = await summarize_results(llm, current_prompt, test_results_data, judge_results_data, model=improver_model)
+                summary = await summarize_results(improver_client, current_prompt, test_results_data, judge_results_data, model=improver_model)
 
                 # Update iteration with scores
                 iteration.avg_score = summary["avg_score"]
@@ -191,7 +225,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     await _add_log(session, run_id, "improve", "info", f"Iteration {iter_num}: Generating improved prompt", iteration.id)
 
                     improvement = await improve_prompt(
-                        llm, current_prompt, summary,
+                        improver_client, current_prompt, summary,
                         available_columns=input_columns, model=improver_model, target_score=target_score,
                     )
 

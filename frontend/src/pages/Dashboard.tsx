@@ -1,9 +1,14 @@
 import { Link } from 'react-router-dom'
-import { useRuns } from '../hooks/useRuns'
+import { useRuns, useDeleteRun } from '../hooks/useRuns'
 import RunCard from '../components/RunCard'
 
 export default function Dashboard() {
   const { data: runs, isLoading } = useRuns()
+  const deleteRun = useDeleteRun()
+
+  const handleDelete = (id: number) => {
+    deleteRun.mutate(id)
+  }
 
   return (
     <div>
@@ -32,7 +37,7 @@ export default function Dashboard() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {runs.map((run) => (
-            <RunCard key={run.id} run={run} />
+            <RunCard key={run.id} run={run} onDelete={handleDelete} />
           ))}
         </div>
       )}

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
 from .api.runs import router as runs_router
 from .api.stream import router as stream_router
+from .api.providers import router as providers_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
 
@@ -26,6 +27,7 @@ app.add_middleware(
 
 app.include_router(runs_router)
 app.include_router(stream_router)
+app.include_router(providers_router)
 
 @app.get("/api/health")
 async def health():
