@@ -18,9 +18,9 @@ export default function NewRun() {
   const [prompt, setPrompt] = useState('')
   const [expectedColumn, setExpectedColumn] = useState('')
   const [config, setConfig] = useState({
-    model: 'gpt-4o-mini',
-    judge_model: 'gpt-4o-mini',
-    improver_model: 'gpt-4o',
+    model: '',
+    judge_model: '',
+    improver_model: '',
     max_iterations: 10,
     target_score: 0.9,
     temperature: 0.7,
@@ -241,17 +241,17 @@ export default function NewRun() {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Test Model</label>
               <input type="text" value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Judge Model</label>
               <input type="text" value={config.judge_model} onChange={(e) => setConfig({ ...config, judge_model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Improver Model</label>
               <input type="text" value={config.improver_model} onChange={(e) => setConfig({ ...config, improver_model: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Max Iterations</label>
