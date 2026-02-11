@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
+from pydantic import BaseModel
+from openai import AsyncOpenAI
 
 from ..database import get_db
 from ..models import Run, Iteration, TestResult, Log
@@ -14,6 +16,77 @@ from ..services.csv_loader import parse_csv, validate_prompt_columns
 from ..services.pipeline import run_pipeline, request_stop
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
+
+# Helper function to filter chat models
+def _is_chat_model(model_id: str) -> bool:
+    """Check if a model ID appears to be a chat completion model."""
+    exclude_keywords = ["embed", "tts", "whisper", "dall-e", "moderation"]
+    model_lower = model_id.lower()
+    return not any(keyword in model_lower for keyword in exclude_keywords)
+
+# Pydantic model for custom models request
+class CustomModelsRequest(BaseModel):
+    base_url: str
+    api_key: Optional[str] = None
+
+@router.get("/models")
+async def get_models(settings: Settings = Depends(get_settings)):
+    """Get available chat completion models from the configured OpenAI-compatible API."""
+    try:
+        client = AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_BASE_URL
+        )
+        models_list = await client.models.list()
+
+        chat_models = [
+            model.id for model in models_list.data
+            if _is_chat_model(model.id)
+        ]
+        chat_models.sort()
+
+        return {
+            "models": chat_models,
+            "base_url": settings.OPENAI_BASE_URL,
+            "defaults": {
+                "model": settings.OPENAI_MODEL,
+                "judge_model": settings.JUDGE_MODEL,
+                "improver_model": settings.IMPROVER_MODEL
+            }
+        }
+    except Exception as e:
+        return {
+            "models": [],
+            "error": str(e)
+        }
+
+@router.post("/models/custom")
+async def get_custom_models(
+    body: CustomModelsRequest,
+    settings: Settings = Depends(get_settings)
+):
+    """Get available chat completion models from a custom OpenAI-compatible API endpoint."""
+    try:
+        client = AsyncOpenAI(
+            api_key=body.api_key or settings.OPENAI_API_KEY,
+            base_url=body.base_url
+        )
+        models_list = await client.models.list()
+
+        chat_models = [
+            model.id for model in models_list.data
+            if _is_chat_model(model.id)
+        ]
+        chat_models.sort()
+
+        return {
+            "models": chat_models
+        }
+    except Exception as e:
+        return {
+            "models": [],
+            "error": str(e)
+        }
 
 @router.post("", response_model=RunResponse)
 async def create_run(

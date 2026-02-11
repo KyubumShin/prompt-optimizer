@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCreateRun } from '../hooks/useRuns'
+import { fetchModels, fetchCustomModels } from '../lib/api'
 
 interface CSVPreview {
   columns: string[]
@@ -30,6 +31,52 @@ export default function NewRun() {
     convergence_patience: 2,
   })
   const [error, setError] = useState('')
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [modelDefaults, setModelDefaults] = useState<{ model: string; judge_model: string; improver_model: string } | null>(null)
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState('')
+  const [useCustomUrl, setUseCustomUrl] = useState(false)
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const [customApiKey, setCustomApiKey] = useState('')
+
+  useEffect(() => {
+    if (step === 3 && !useCustomUrl && availableModels.length === 0 && !modelsLoading) {
+      setModelsLoading(true)
+      setModelsError('')
+      fetchModels()
+        .then((res) => {
+          if (res.error) {
+            setModelsError(res.error)
+          } else {
+            setAvailableModels(res.models)
+            setModelDefaults(res.defaults)
+          }
+        })
+        .catch((e) => setModelsError(e.message || 'Failed to fetch models'))
+        .finally(() => setModelsLoading(false))
+    }
+  }, [step])
+
+  const handleFetchCustomModels = async () => {
+    if (!customBaseUrl.trim()) return
+    setModelsLoading(true)
+    setModelsError('')
+    try {
+      const res = await fetchCustomModels(customBaseUrl, customApiKey || undefined)
+      if (res.error) {
+        setModelsError(res.error)
+        setAvailableModels([])
+      } else {
+        setAvailableModels(res.models)
+        setModelDefaults(null)
+      }
+    } catch (e: any) {
+      setModelsError(e.message || 'Failed to fetch models')
+      setAvailableModels([])
+    } finally {
+      setModelsLoading(false)
+    }
+  }
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -240,18 +287,27 @@ export default function NewRun() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Test Model</label>
-              <input type="text" value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <select value={config.model} onChange={(e) => setConfig({ ...config, model: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">{modelDefaults ? `Server default (${modelDefaults.model})` : 'Server default'}</option>
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Judge Model</label>
-              <input type="text" value={config.judge_model} onChange={(e) => setConfig({ ...config, judge_model: e.target.value })}
-                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <select value={config.judge_model} onChange={(e) => setConfig({ ...config, judge_model: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">{modelDefaults ? `Server default (${modelDefaults.judge_model})` : 'Server default'}</option>
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Improver Model</label>
-              <input type="text" value={config.improver_model} onChange={(e) => setConfig({ ...config, improver_model: e.target.value })}
-                placeholder="Server default" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <select value={config.improver_model} onChange={(e) => setConfig({ ...config, improver_model: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="">{modelDefaults ? `Server default (${modelDefaults.improver_model})` : 'Server default'}</option>
+                {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Max Iterations</label>
@@ -278,6 +334,70 @@ export default function NewRun() {
               <input type="number" value={config.convergence_patience} onChange={(e) => setConfig({ ...config, convergence_patience: parseInt(e.target.value) || 2 })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
+          </div>
+          {/* Custom URL toggle */}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useCustomUrl}
+                onChange={(e) => {
+                  setUseCustomUrl(e.target.checked)
+                  if (!e.target.checked) {
+                    setCustomBaseUrl('')
+                    setCustomApiKey('')
+                    setAvailableModels([])
+                    setModelDefaults(null)
+                    setModelsError('')
+                    setModelsLoading(true)
+                    fetchModels()
+                      .then((res) => {
+                        if (res.error) {
+                          setModelsError(res.error)
+                        } else {
+                          setAvailableModels(res.models)
+                          setModelDefaults(res.defaults)
+                        }
+                      })
+                      .catch((e) => setModelsError(e.message || 'Failed to fetch models'))
+                      .finally(() => setModelsLoading(false))
+                  }
+                }}
+                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Use Custom OpenAI-Compatible URL</span>
+            </label>
+            {useCustomUrl && (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={customBaseUrl}
+                  onChange={(e) => setCustomBaseUrl(e.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="password"
+                  value={customApiKey}
+                  onChange={(e) => setCustomApiKey(e.target.value)}
+                  placeholder="API Key (optional, uses server key if empty)"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={handleFetchCustomModels}
+                  disabled={!customBaseUrl.trim() || modelsLoading}
+                  className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-50"
+                >
+                  {modelsLoading ? 'Fetching...' : 'Fetch Models'}
+                </button>
+              </div>
+            )}
+            {modelsLoading && !useCustomUrl && (
+              <p className="text-xs text-gray-500">Loading available models...</p>
+            )}
+            {modelsError && (
+              <p className="text-xs text-red-500">Error: {modelsError}</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Custom Judge Prompt (optional)</label>

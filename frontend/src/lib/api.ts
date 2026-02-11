@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Run, RunDetail, Iteration, IterationDetail, LogEntry } from '../types'
+import type { Run, RunDetail, Iteration, IterationDetail, LogEntry, ModelsResponse, CustomModelsResponse } from '../types'
 
 const client = axios.create({ baseURL: '/api' })
 
@@ -44,4 +44,14 @@ export async function stopRun(id: number): Promise<void> {
 
 export async function deleteRun(id: number): Promise<void> {
   await client.delete(`/runs/${id}`)
+}
+
+export async function fetchModels(): Promise<ModelsResponse> {
+  const { data } = await client.get('/runs/models')
+  return data
+}
+
+export async function fetchCustomModels(baseUrl: string, apiKey?: string): Promise<CustomModelsResponse> {
+  const { data } = await client.post('/runs/models/custom', { base_url: baseUrl, api_key: apiKey })
+  return data
 }

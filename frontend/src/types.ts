@@ -74,3 +74,15 @@ export interface SSEEvent {
   event: string
   data: Record<string, any>
 }
+
+export interface ModelsResponse {
+  models: string[]
+  base_url: string
+  defaults: { model: string; judge_model: string; improver_model: string }
+  error?: string
+}
+
+export interface CustomModelsResponse {
+  models: string[]
+  error?: string
+}
