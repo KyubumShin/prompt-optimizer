@@ -55,7 +55,7 @@ prompt-optimizer/
 │   ├── models.py                  # 4 tables: runs, iterations, test_results, logs
 │   ├── schemas.py                 # Pydantic request/response models
 │   ├── api/
-│   │   ├── runs.py                # CRUD + stop endpoints
+│   │   ├── runs.py                # CRUD + stop + model discovery endpoints
 │   │   └── stream.py              # SSE endpoint for live updates
 │   ├── services/
 │   │   ├── llm_client.py          # AsyncOpenAI wrapper with retry logic
@@ -71,14 +71,14 @@ prompt-optimizer/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx                # Routes
-│   │   ├── types.ts               # TypeScript interfaces
-│   │   ├── lib/api.ts             # Axios API client
+│   │   ├── types.ts               # TypeScript interfaces (incl. ModelsResponse)
+│   │   ├── lib/api.ts             # Axios API client (incl. model discovery)
 │   │   ├── hooks/
 │   │   │   ├── useRuns.ts         # React Query hooks
 │   │   │   └── useSSE.ts          # SSE hook for live updates
 │   │   ├── pages/
 │   │   │   ├── Dashboard.tsx      # List all runs
-│   │   │   ├── NewRun.tsx         # Create run form (3-step wizard)
+│   │   │   ├── NewRun.tsx         # Create run form (3-step wizard, model dropdowns)
 │   │   │   ├── RunDetail.tsx      # Run progress + results
 │   │   │   └── IterationDetail.tsx # Per-iteration test results
 │   │   └── components/
@@ -196,8 +196,8 @@ IMPROVER_MODEL=gemini-1.5-pro
 1. Click the "New Run" button on the dashboard
 2. Follow the 3-step wizard:
    - **Step 1**: Upload CSV - Upload your test dataset
-   - **Step 2**: Configure - Select expected output column and write initial prompt
-   - **Step 3**: Settings - Configure models, iterations, and target score
+   - **Step 2**: Write Prompt - Write initial prompt with column placeholders
+   - **Step 3**: Configure - Select models from dropdown, adjust settings
 
 ### 2. Upload CSV Dataset
 
@@ -216,7 +216,8 @@ Available placeholders are any column names from your CSV (except the expected o
 
 ### 4. Configure Settings
 
-- **Model Selection**: Choose models for testing, judging, and improving
+- **Model Selection**: Select models from auto-populated dropdowns (Test Model, Judge Model, Improver Model). Available models are fetched from your configured API provider. The default option shows the server-configured model name.
+- **Custom URL**: Toggle "Use Custom OpenAI-Compatible URL" to fetch models from a different provider (e.g., switch from Gemini to OpenAI or a local endpoint). Enter the base URL and optionally an API key, then click "Fetch Models".
 - **Max Iterations**: Maximum optimization rounds (default: 10)
 - **Target Score**: Stop when average score reaches this threshold (0-1, default: 0.9)
 - **Concurrency**: Number of parallel LLM requests (default: 5)
@@ -274,6 +275,13 @@ source_lang,target_lang,text,expected_output
 Prompt example: `Translate from {source_lang} to {target_lang}: {text}`
 
 ## API Reference
+
+### Model Discovery
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/runs/models` | List available chat-completion models from configured provider |
+| `POST` | `/api/runs/models/custom` | List models from a custom OpenAI-compatible URL |
 
 ### Run Management
 
