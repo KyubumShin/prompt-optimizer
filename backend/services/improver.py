@@ -26,6 +26,16 @@ Generate an improved version of the prompt that addresses the identified issues.
     "improved_prompt": "The full improved prompt template with {{placeholders}} preserved"
 }}"""
 
+VLM_IMPROVEMENT_GUIDANCE = """
+
+NOTE: This prompt is used with a Vision Language Model (VLM) that receives images alongside the text prompt.
+Consider VLM-specific improvements:
+- Add explicit references to visual content (e.g., "Looking at the image...", "Based on what you see...")
+- Encourage step-by-step visual reasoning (e.g., "First describe what you see, then answer...")
+- Include spatial description hints (e.g., "Pay attention to text, labels, and spatial relationships in the image")
+- Be specific about what visual elements to focus on
+- Do NOT add image placeholders - images are provided separately as visual input"""
+
 async def improve_prompt(
     llm_client,
     current_prompt: str,
@@ -34,6 +44,7 @@ async def improve_prompt(
     model: str,
     target_score: float = 0.9,
     summary_language: str = "English",
+    is_vlm: bool = False,
 ) -> Dict:
     """Generate improved prompt based on failure summary. Returns {reasoning, improved_prompt}."""
     prompt = IMPROVE_PROMPT.format(
@@ -45,6 +56,9 @@ async def improve_prompt(
         suggestions=", ".join(summary.get("suggestions", [])),
         available_columns=", ".join(available_columns),
     )
+
+    if is_vlm:
+        prompt += VLM_IMPROVEMENT_GUIDANCE
 
     # Include user feedback if available
     if summary.get("user_feedback"):

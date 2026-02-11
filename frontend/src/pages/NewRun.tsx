@@ -37,6 +37,7 @@ export default function NewRun() {
     convergence_patience: 2,
     human_feedback_enabled: false,
     summary_language: 'English',
+    image_columns: [] as string[],
   })
   const [error, setError] = useState('')
 
@@ -352,6 +353,49 @@ export default function NewRun() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Image Columns <span className="text-xs text-gray-400 font-normal">(columns containing image URLs/paths for VLM)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-1">
+                  {csvPreview.columns.filter((c) => c !== expectedColumn).map((col) => {
+                    const isSelected = config.image_columns.includes(col)
+                    // Auto-detect hint: check if first row values look like image URLs
+                    const firstRowVal = csvPreview.rows[0]?.[csvPreview.columns.indexOf(col)] || ''
+                    const looksLikeImage = /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)/i.test(firstRowVal.trim())
+                    return (
+                      <button
+                        key={col}
+                        onClick={() => {
+                          setConfig((prev) => ({
+                            ...prev,
+                            image_columns: isSelected
+                              ? prev.image_columns.filter((c) => c !== col)
+                              : [...prev.image_columns, col],
+                          }))
+                        }}
+                        className={`px-2 py-1 rounded text-xs border transition-colors ${
+                          isSelected
+                            ? 'bg-purple-100 text-purple-700 border-purple-300'
+                            : looksLikeImage
+                            ? 'bg-purple-50 text-purple-600 border-purple-200 border-dashed'
+                            : 'bg-gray-50 text-gray-600 border-gray-200'
+                        }`}
+                        title={looksLikeImage && !isSelected ? 'Detected as possible image column' : ''}
+                      >
+                        {isSelected ? '\u2713 ' : ''}{col}
+                        {looksLikeImage && !isSelected && <span className="ml-1 text-purple-400">(img?)</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                {config.image_columns.length > 0 && (
+                  <p className="text-xs text-purple-600">
+                    {config.image_columns.length} image column{config.image_columns.length > 1 ? 's' : ''} selected — these will be sent as visual input to the VLM
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Preview (first 5 rows)</h3>
                 <div className="overflow-x-auto border rounded-lg">
                   <table className="w-full text-xs">
@@ -359,7 +403,9 @@ export default function NewRun() {
                       <tr>
                         {csvPreview.columns.map((col) => (
                           <th key={col} className="px-3 py-2 text-left font-medium text-gray-600">
-                            {col} {col === expectedColumn && <span className="text-indigo-500">(expected)</span>}
+                            {col}
+                            {col === expectedColumn && <span className="text-indigo-500 ml-1">(expected)</span>}
+                            {config.image_columns.includes(col) && <span className="ml-1 text-purple-500">(IMG)</span>}
                           </th>
                         ))}
                       </tr>
@@ -368,7 +414,14 @@ export default function NewRun() {
                       {csvPreview.rows.map((row, i) => (
                         <tr key={i} className="border-t">
                           {row.map((cell, j) => (
-                            <td key={j} className="px-3 py-2 text-gray-700 max-w-[200px] truncate">{cell}</td>
+                            <td key={j} className="px-3 py-2 text-gray-700 max-w-[200px] truncate">
+                              {config.image_columns.includes(csvPreview.columns[j]) && /^https?:\/\//i.test(cell.trim()) ? (
+                                <div className="flex items-center gap-1">
+                                  <img src={cell.trim()} alt="" className="w-8 h-8 object-cover rounded border" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                                  <span className="truncate text-xs text-gray-500">{cell}</span>
+                                </div>
+                              ) : cell}
+                            </td>
                           ))}
                         </tr>
                       ))}
@@ -400,16 +453,35 @@ export default function NewRun() {
               Use {'{column_name}'} placeholders to insert CSV values. Click a column name below to insert it.
             </p>
             <div className="flex flex-wrap gap-1 mb-2">
-              {inputColumns.map((col) => (
-                <button
-                  key={col}
-                  onClick={() => insertPlaceholder(col)}
-                  className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs hover:bg-indigo-100"
-                >
-                  {'{' + col + '}'}
-                </button>
-              ))}
+              {inputColumns.map((col) => {
+                const isImageCol = config.image_columns.includes(col)
+                if (isImageCol) {
+                  return (
+                    <span
+                      key={col}
+                      className="px-2 py-1 bg-purple-50 text-purple-500 rounded text-xs border border-purple-200 cursor-default"
+                      title="Image column — attached as visual input, not as text placeholder"
+                    >
+                      {col} (image)
+                    </span>
+                  )
+                }
+                return (
+                  <button
+                    key={col}
+                    onClick={() => insertPlaceholder(col)}
+                    className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs hover:bg-indigo-100"
+                  >
+                    {'{' + col + '}'}
+                  </button>
+                )
+              })}
             </div>
+            {config.image_columns.length > 0 && (
+              <p className="text-xs text-purple-600 mb-2">
+                Image columns ({config.image_columns.join(', ')}) will be attached as visual input to the model.
+              </p>
+            )}
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}

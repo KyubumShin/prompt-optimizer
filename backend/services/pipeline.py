@@ -75,7 +75,7 @@ def _resolve_client(settings: Settings, config: dict, stage: str) -> tuple:
     return client, model_name
 
 
-async def run_pipeline(run_id: int, session_factory, settings: Settings, test_cases: list[dict], expected_col: str, input_columns: list[str]):
+async def run_pipeline(run_id: int, session_factory, settings: Settings, test_cases: list[dict], expected_col: str, input_columns: list[str], image_columns: list[str] | None = None):
     """Main pipeline orchestrator. Runs as an asyncio task."""
     _cancel_flags[run_id] = False
 
@@ -90,6 +90,8 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
             await session.commit()
 
             config = run.config or {}
+            image_cols = image_columns or config.get("image_columns", [])
+            is_vlm = bool(image_cols)
 
             # Resolve per-stage clients
             test_client, model = _resolve_client(settings, config, "test")
@@ -137,7 +139,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 test_results_data = await run_tests(
                     test_client, current_prompt, test_cases, expected_col,
                     model=model, temperature=temperature, concurrency=concurrency,
-                    on_progress=on_progress,
+                    on_progress=on_progress, image_columns=image_cols,
                 )
 
                 if is_cancelled(run_id):
@@ -153,6 +155,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 judge_results_data = await judge_results(
                     judge_client, test_results_data, judge_model=judge_model,
                     custom_judge_prompt=custom_judge_prompt, concurrency=concurrency,
+                    image_columns=image_cols,
                 )
 
                 # Save test results to DB
@@ -178,7 +181,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 await event_manager.emit_stage_start(run_id, "summarize", iter_num)
                 await _add_log(session, run_id, "summarize", "info", f"Iteration {iter_num}: Summarizing results", iteration.id)
 
-                summary = await summarize_results(improver_client, current_prompt, test_results_data, judge_results_data, model=improver_model, summary_language=summary_language)
+                summary = await summarize_results(improver_client, current_prompt, test_results_data, judge_results_data, model=improver_model, summary_language=summary_language, is_vlm=is_vlm)
 
                 # Update iteration with scores
                 iteration.avg_score = summary["avg_score"]
@@ -265,7 +268,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     improvement = await improve_prompt(
                         improver_client, current_prompt, summary,
                         available_columns=input_columns, model=improver_model, target_score=target_score,
-                        summary_language=summary_language,
+                        summary_language=summary_language, is_vlm=is_vlm,
                     )
 
                     iteration.improvement_reasoning = improvement["reasoning"]
