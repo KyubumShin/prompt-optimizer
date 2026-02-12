@@ -175,9 +175,89 @@ def test_best_prompt(run: dict):
         print(f"  Run status is {run['status']}, skipping best prompt check")
 
 
+def test_human_feedback_empty():
+    """Test human feedback with empty feedback (skip)."""
+    print("\n=== TEST 10: Human Feedback Empty ===")
+
+    # Create a run with human feedback enabled
+    with open(TEST_CSV, "rb") as f:
+        files = {"file": ("test_data.csv", f, "text/csv")}
+        data = {
+            "name": "Feedback Test",
+            "initial_prompt": "Translate: {text}",
+            "expected_column": "expected_output",
+            "config_json": json.dumps({
+                "max_iterations": 2,
+                "target_score": 0.95,
+                "temperature": 0.3,
+                "concurrency": 3,
+                "human_feedback_enabled": True,
+            }),
+        }
+        r = requests.post(f"{BASE_URL}/api/runs", data=data, files=files)
+    assert r.status_code == 200
+    feedback_run_id = r.json()["id"]
+    print(f"  Created run {feedback_run_id} with human feedback enabled")
+
+    # Poll logs until we see "Waiting for human feedback"
+    print("  Waiting for feedback checkpoint...")
+    start = time.time()
+    feedback_found = False
+    while time.time() - start < 120:  # 2 minute timeout
+        r = requests.get(f"{BASE_URL}/api/runs/{feedback_run_id}/logs")
+        if r.status_code == 200:
+            logs = r.json()
+            for log in logs:
+                if "Waiting for human feedback" in log.get("message", ""):
+                    feedback_found = True
+                    print(f"  Feedback checkpoint reached at iteration {log.get('iteration_id')}")
+                    break
+        if feedback_found:
+            break
+        time.sleep(2)
+
+    assert feedback_found, "Pipeline did not reach feedback checkpoint"
+
+    # Submit empty feedback
+    print("  Submitting empty feedback...")
+    r = requests.post(f"{BASE_URL}/api/runs/{feedback_run_id}/feedback", json={"feedback": ""})
+    print(f"  Submit status: {r.status_code}")
+    assert r.status_code == 200
+
+    # Wait for run to complete (should not get stuck)
+    print("  Waiting for pipeline to complete...")
+    start = time.time()
+    completed = False
+    while time.time() - start < 180:  # 3 minute timeout
+        r = requests.get(f"{BASE_URL}/api/runs/{feedback_run_id}")
+        if r.status_code == 200:
+            run = r.json()
+            status = run["status"]
+            iters = run["total_iterations_completed"]
+            print(f"  Status: {status}, Iterations: {iters}", end="\r")
+            if status in ("completed", "failed", "stopped"):
+                completed = True
+                print()
+                print(f"  Final status: {status}, iterations: {iters}")
+                break
+        time.sleep(2)
+
+    assert completed, "Pipeline did not complete after empty feedback"
+
+    # Verify it completed at least 1 iteration
+    r = requests.get(f"{BASE_URL}/api/runs/{feedback_run_id}")
+    assert r.status_code == 200
+    final_run = r.json()
+    assert final_run["total_iterations_completed"] >= 1, "Should have completed at least 1 iteration"
+    print(f"  Verified: Pipeline completed successfully after empty feedback")
+
+    # Cleanup
+    requests.delete(f"{BASE_URL}/api/runs/{feedback_run_id}")
+
+
 def test_delete_run():
     """Test creating and deleting a run."""
-    print("\n=== TEST 10: Delete Run ===")
+    print("\n=== TEST 11: Delete Run ===")
     # Create a dummy run
     with open(TEST_CSV, "rb") as f:
         files = {"file": ("test_data.csv", f, "text/csv")}
@@ -272,7 +352,11 @@ def main():
         test_best_prompt(final_run)
         passed += 1
 
-        # Test 10: Delete
+        # Test 10: Human feedback empty
+        test_human_feedback_empty()
+        passed += 1
+
+        # Test 11: Delete
         test_delete_run()
         passed += 1
 
@@ -284,7 +368,7 @@ def main():
         failed += 1
 
     print("\n" + "=" * 60)
-    print(f"RESULTS: {passed} passed, {failed} failed out of 10 tests")
+    print(f"RESULTS: {passed} passed, {failed} failed out of 11 tests")
     print("=" * 60)
 
     return 0 if failed == 0 else 1

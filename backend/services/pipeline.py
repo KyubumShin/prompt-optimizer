@@ -27,6 +27,8 @@ _feedback_data: dict[int, str | None] = {}
 def submit_feedback(run_id: int, feedback: str):
     """Called from API to submit user feedback for a waiting pipeline."""
     _feedback_data[run_id] = feedback
+    if not feedback:
+        logger.info(f"Run {run_id}: Empty feedback received (skip)")
     event = _feedback_events.get(run_id)
     if event:
         event.set()
@@ -201,6 +203,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                 if human_feedback_enabled and iter_num < max_iterations:
                     await event_manager.emit_feedback_requested(run_id, iter_num, summary)
                     await _add_log(session, run_id, "system", "info", f"Iteration {iter_num}: Waiting for human feedback", iteration.id)
+                    await session.commit()  # Commit progress before blocking on feedback
                     feedback_event = asyncio.Event()
                     _feedback_events[run_id] = feedback_event
                     _feedback_data[run_id] = None

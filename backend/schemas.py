@@ -104,4 +104,4 @@ class IterationDetailResponse(IterationResponse):
 
 class FeedbackSubmit(BaseModel):
     """Schema for submitting human feedback."""
-    feedback: str
+    feedback: str = ""

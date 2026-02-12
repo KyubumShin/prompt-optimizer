@@ -279,16 +279,23 @@ export default function NewRun() {
           <div>
             <label className="block text-xs text-gray-500 mb-1">Model</label>
             {isCustom ? (
-              <select
-                value={modelValue}
-                onChange={(e) => handleModelChange(stage, e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-              >
-                <option value="">Select model...</option>
-                {models.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+              <>
+                <input
+                  type="text"
+                  list={`custom-models-${stage}`}
+                  value={modelValue}
+                  onChange={(e) => handleModelChange(stage, e.target.value)}
+                  placeholder="Type model name..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                {models.length > 0 && (
+                  <datalist id={`custom-models-${stage}`}>
+                    {models.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                )}
+              </>
             ) : (
               <select
                 value={modelValue}
