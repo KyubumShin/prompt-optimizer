@@ -33,6 +33,7 @@ async def run_tests(
                 result = {
                     "index": index,
                     "input_data": input_data,
+                    "input_prompt": formatted_prompt,
                     "expected": expected,
                     "actual": actual,
                     "error": None,
@@ -42,6 +43,7 @@ async def run_tests(
                 result = {
                     "index": index,
                     "input_data": {k: v for k, v in test_case.items() if k != expected_col},
+                    "input_prompt": None,
                     "expected": test_case.get(expected_col, ""),
                     "actual": None,
                     "error": str(e),

@@ -48,7 +48,7 @@ function parseCSVLine(line: string): string[] {
 const DEFAULT_JUDGE_PROMPT = `You are an expert judge evaluating the quality of an AI-generated response.
 
 Given:
-- Input: {input_data}
+- Input Prompt: {input_prompt}
 - Expected Output: {expected}
 - Actual Output: {actual}
 
@@ -572,10 +572,10 @@ export default function NewRun() {
               Custom Judge Prompt (optional)
             </label>
             <p className="text-xs text-gray-500 mb-2">
-              Customize how the judge evaluates responses. Use placeholders to inject data. Leave empty to use the default prompt shown below.
+              Customize how the judge evaluates responses. Use placeholders to inject the formatted prompt, expected output, and actual output. Leave empty to use the default prompt shown below.
             </p>
             <div className="flex flex-wrap gap-1 mb-2">
-              {['{input_data}', '{expected}', '{actual}'].map((ph) => (
+              {['{input_prompt}', '{expected}', '{actual}'].map((ph) => (
                 <button
                   key={ph}
                   onClick={() => insertJudgePlaceholder(ph)}

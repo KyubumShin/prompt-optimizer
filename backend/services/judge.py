@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_JUDGE_PROMPT = """You are an expert judge evaluating the quality of an AI-generated response.
 
 Given:
-- Input: {input_data}
+- Input Prompt: {input_prompt}
 - Expected Output: {expected}
 - Actual Output: {actual}
 
@@ -43,6 +43,7 @@ async def judge_results(
                 }
             try:
                 prompt = judge_prompt_template.format(
+                    input_prompt=result.get("input_prompt") or str(result["input_data"]),
                     input_data=str(result["input_data"]),
                     expected=result["expected"],
                     actual=result["actual"],
