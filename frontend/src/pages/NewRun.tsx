@@ -45,6 +45,23 @@ function parseCSVLine(line: string): string[] {
   return fields
 }
 
+const DEFAULT_JUDGE_PROMPT = `You are an expert judge evaluating the quality of an AI-generated response.
+
+Given:
+- Input: {input_data}
+- Expected Output: {expected}
+- Actual Output: {actual}
+
+Evaluate the actual output against the expected output. Consider:
+1. Correctness: Does it match the expected output semantically?
+2. Completeness: Does it cover all required information?
+3. Format: Is it in the right format?
+
+Respond with ONLY a JSON object:
+{"reason": "your detailed reasoning here", "score": 0.0}
+
+Score should be between 0.0 (completely wrong) and 1.0 (perfect match).`
+
 export default function NewRun() {
   const navigate = useNavigate()
   const createRun = useCreateRun()
@@ -201,6 +218,10 @@ export default function NewRun() {
 
   const insertPlaceholder = (col: string) => {
     setPrompt((prev) => prev + `{${col}}`)
+  }
+
+  const insertJudgePlaceholder = (placeholder: string) => {
+    setConfig((prev) => ({ ...prev, judge_prompt: prev.judge_prompt + placeholder }))
   }
 
   const handleSubmit = async () => {
@@ -547,13 +568,35 @@ export default function NewRun() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Custom Judge Prompt (optional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Custom Judge Prompt (optional)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Customize how the judge evaluates responses. Use placeholders to inject data. Leave empty to use the default prompt shown below.
+            </p>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {['{input_data}', '{expected}', '{actual}'].map((ph) => (
+                <button
+                  key={ph}
+                  onClick={() => insertJudgePlaceholder(ph)}
+                  className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs hover:bg-indigo-100"
+                >
+                  {ph}
+                </button>
+              ))}
+              <button
+                onClick={() => setConfig((prev) => ({ ...prev, judge_prompt: DEFAULT_JUDGE_PROMPT }))}
+                className="ml-auto px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200"
+              >
+                Reset to default
+              </button>
+            </div>
             <textarea
               value={config.judge_prompt}
               onChange={(e) => setConfig({ ...config, judge_prompt: e.target.value })}
-              rows={4}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
-              placeholder="Leave empty for default judge prompt. Use {input_data}, {expected}, {actual} placeholders."
+              rows={10}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder={DEFAULT_JUDGE_PROMPT}
             />
           </div>
 
