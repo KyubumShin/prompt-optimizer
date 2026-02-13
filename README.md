@@ -55,10 +55,12 @@ prompt-optimizer/
 │   ├── models.py                  # 4 tables: runs, iterations, test_results, logs
 │   ├── schemas.py                 # Pydantic request/response models
 │   ├── api/
-│   │   ├── runs.py                # CRUD + stop + model discovery endpoints
-│   │   └── stream.py              # SSE endpoint for live updates
+│   │   ├── runs.py                # CRUD + stop + feedback endpoints
+│   │   ├── stream.py              # SSE endpoint for live updates
+│   │   └── providers.py           # Provider discovery + model listing
 │   ├── services/
-│   │   ├── llm_client.py          # AsyncOpenAI wrapper with retry logic
+│   │   ├── llm_client.py          # BaseLLMClient ABC + OpenAI/Anthropic implementations with shared retry logic
+│   │   ├── providers.py           # ProviderRegistry, model filtering
 │   │   ├── csv_loader.py          # CSV parse + validate
 │   │   ├── pipeline.py            # Main orchestrator loop
 │   │   ├── event_manager.py       # SSE event queue manager
@@ -92,9 +94,16 @@ prompt-optimizer/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── tsconfig.json
+├── docs/
+│   └── architecture.md            # Multi-provider architecture documentation
 └── tests/
+    ├── conftest.py                # Shared pytest fixtures
+    ├── test_multi_provider.py     # 51 unit tests for multi-provider support
+    ├── test_e2e.py                # End-to-end test suite
+    ├── test_e2e_multi_column.py   # Multi-column CSV E2E tests
     ├── test_data.csv              # 10 example test cases
-    └── test_e2e.py                # End-to-end test suite
+    ├── test_data_multi_column.csv # Multi-column test data
+    └── test_data_ko.csv           # Korean language test data
 ```
 
 ## Quick Start
@@ -169,6 +178,12 @@ The application is configured via environment variables. Create a `.env` file in
 | `OPENAI_MODEL` | Model for test stage | `gpt-4o-mini` |
 | `JUDGE_MODEL` | Model for judge stage | `gpt-4o-mini` |
 | `IMPROVER_MODEL` | Model for improve stage | `gpt-4o` |
+| `GEMINI_API_KEY` | Google Gemini API key (auto-detected from legacy config) | (optional) |
+| `GEMINI_BASE_URL` | Gemini API endpoint | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `ANTHROPIC_API_KEY` | Anthropic API key | (optional) |
+| `OPENAI_PROVIDER_API_KEY` | Explicit OpenAI key when legacy points to Gemini | (optional) |
+| `OPENAI_PROVIDER_BASE_URL` | OpenAI provider endpoint | `https://api.openai.com/v1` |
+| `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:5173,http://localhost:3000` |
 | `DATABASE_URL` | SQLAlchemy database URL | `sqlite+aiosqlite:///./prompt_optimizer.db` |
 | `DEFAULT_CONCURRENCY` | Concurrent LLM requests | `5` |
 | `DEFAULT_MAX_ITERATIONS` | Maximum optimization iterations | `10` |
@@ -188,6 +203,53 @@ OPENAI_MODEL=gemini-1.5-flash
 JUDGE_MODEL=gemini-1.5-flash
 IMPROVER_MODEL=gemini-1.5-pro
 ```
+
+## Multi-Provider Support
+
+The system supports using different LLM providers for each pipeline stage, allowing you to optimize for cost, performance, and quality at each step.
+
+### Supported Providers
+
+- **OpenAI** - GPT-4, GPT-4o, GPT-4o-mini, etc.
+- **Google Gemini** - Gemini 1.5 Flash, Gemini 1.5 Pro, etc.
+- **Anthropic** - Claude 3.5 Sonnet, Claude 3 Opus, etc.
+- **Custom OpenAI-Compatible** - Any OpenAI-compatible endpoint (local models, Azure, etc.)
+
+### Per-Stage Configuration
+
+Each pipeline stage can use a different provider by specifying `model_provider`, `judge_provider`, and `improver_provider` in your run configuration:
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "model_provider": "openai",
+  "judge_model": "gemini-1.5-flash",
+  "judge_provider": "gemini",
+  "improver_model": "claude-3-5-sonnet-20241022",
+  "improver_provider": "anthropic",
+  "max_iterations": 10,
+  "target_score": 0.9
+}
+```
+
+### Example: Mixed Provider Setup
+
+Use fast, cost-effective models for testing, and powerful models for judging and improving:
+
+```json
+{
+  "model": "gemini-1.5-flash",
+  "model_provider": "gemini",
+  "judge_model": "gpt-4o",
+  "judge_provider": "openai",
+  "improver_model": "claude-3-5-sonnet-20241022",
+  "improver_provider": "anthropic"
+}
+```
+
+### Backward Compatibility
+
+The system remains backward compatible with single-provider configurations. If you don't specify provider fields, it uses the legacy `OPENAI_API_KEY` and `OPENAI_BASE_URL` for all stages.
 
 ## How to Use
 
@@ -276,6 +338,14 @@ Prompt example: `Translate from {source_lang} to {target_lang}: {text}`
 
 ## API Reference
 
+### Provider Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/providers` | List all providers with config status and defaults |
+| `GET` | `/api/providers/{id}/models` | Fetch available models for a provider |
+| `POST` | `/api/providers/custom/models` | Fetch models from custom endpoint |
+
 ### Model Discovery
 
 | Method | Path | Description |
@@ -292,6 +362,7 @@ Prompt example: `Translate from {source_lang} to {target_lang}: {text}`
 | `GET` | `/api/runs/{id}` | Get run details with iterations |
 | `DELETE` | `/api/runs/{id}` | Delete run and all related data |
 | `POST` | `/api/runs/{id}/stop` | Stop a running optimization |
+| `POST` | `/api/runs/{id}/feedback` | Submit human feedback for running pipeline |
 
 ### Iteration Data
 
@@ -325,6 +396,7 @@ The `/api/runs/{id}/stream` endpoint emits these events:
 - `stage_start` - A pipeline stage begins (test, judge, summarize, improve)
 - `test_progress` - Test stage progress update
 - `iteration_complete` - Iteration finished with scores
+- `feedback_requested` - Pipeline is waiting for human feedback
 - `converged` - Pipeline converged (target reached or stagnation)
 - `completed` - Pipeline completed (max iterations reached)
 - `stopped` - Pipeline stopped by user
@@ -336,7 +408,8 @@ The `/api/runs/{id}/stream` endpoint emits these events:
 - **FastAPI** - Modern async web framework
 - **SQLAlchemy 2.0** - Async ORM with relationship loading
 - **SQLite** - Embedded database with async support (aiosqlite)
-- **OpenAI Python SDK** - LLM client with streaming support
+- **OpenAI Python SDK** - Multi-provider LLM client with streaming support
+- **Anthropic Python SDK** - Native Claude API client
 - **Pydantic** - Data validation and settings management
 
 ### Frontend
@@ -354,22 +427,41 @@ The `/api/runs/{id}/stream` endpoint emits these events:
 
 ## Running Tests
 
-The project includes an end-to-end test suite that validates the entire optimization pipeline.
+The project includes comprehensive unit tests and end-to-end test suites.
 
-### Prerequisites
+### Unit Tests
+
+Run the multi-provider unit tests (51 tests, no server required):
+
+```bash
+python3 -m pytest tests/test_multi_provider.py -v
+```
+
+These tests cover:
+- Provider registry and configuration
+- LLM client implementations (OpenAI, Anthropic, Gemini)
+- Model filtering and validation
+- API key handling and fallback logic
+- Error handling and retry mechanisms
+
+### End-to-End Tests
 
 Ensure the backend server is running:
 ```bash
 python3 -m uvicorn backend.main:app --reload --port 8000
 ```
 
-### Run Tests
+Run the E2E test suites:
 
 ```bash
+# Single-column CSV tests
 python3 tests/test_e2e.py
+
+# Multi-column CSV tests
+python3 tests/test_e2e_multi_column.py
 ```
 
-The test suite includes:
+The E2E test suite includes:
 - Creating a run with CSV upload
 - Monitoring pipeline progress
 - Validating iteration scores
@@ -377,6 +469,7 @@ The test suite includes:
 - Verifying convergence behavior
 - Testing stop functionality
 - Validating data cleanup
+- Multi-column input handling
 
 ## Convergence Criteria
 
@@ -428,10 +521,18 @@ Iteration 5: avg_score = 0.865 (improvement: 0.005) <- below threshold
 - Failure pattern summaries
 - Judge feedback for each test case
 
+### Human Feedback Integration
+- Enable `human_feedback_enabled` in run configuration
+- Pipeline pauses after each iteration's summarize stage
+- User can provide written feedback that the improver incorporates into the next iteration
+- Automatic continuation after 30-minute timeout if no feedback provided
+- Interactive feedback UI in the Run Detail page
+
 ### Flexible Configuration
 - Custom judge prompts for domain-specific scoring
 - Adjustable convergence criteria
 - Model selection per pipeline stage
+- Multi-provider support with per-stage configuration
 - Concurrency control for cost/speed tradeoff
 
 ## Troubleshooting
