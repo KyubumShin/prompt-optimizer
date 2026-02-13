@@ -1,13 +1,10 @@
 """End-to-end test for the Prompt Optimizer pipeline."""
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import sys
 import os
-import subprocess
-import signal
 import requests
 
 BASE_URL = "http://localhost:8000"
