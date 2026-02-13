@@ -5,6 +5,8 @@ from typing import List, Dict
 
 logger = logging.getLogger(__name__)
 
+FAILURE_SCORE_THRESHOLD = 0.7
+
 SUMMARIZE_PROMPT = """You are analyzing the results of a prompt evaluation. Below are the judge evaluations for each test case.
 
 Current prompt being evaluated:
@@ -45,7 +47,7 @@ async def summarize_results(
     # Collect failures
     failures = []
     for test, judge in zip(test_results, judge_results_list):
-        if judge["score"] < 0.7:
+        if judge["score"] < FAILURE_SCORE_THRESHOLD:
             failures.append(
                 f"  Case {test['index']}: score={judge['score']:.2f}\n"
                 f"    Input: {test['input_data']}\n"
