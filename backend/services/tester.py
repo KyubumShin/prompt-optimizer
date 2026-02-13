@@ -16,9 +16,11 @@ async def run_tests(
 ) -> List[Dict]:
     """Run prompt_template on each test case concurrently. Returns list of {index, input_data, expected, actual, error}."""
     semaphore = asyncio.Semaphore(concurrency)
-    results = []
+    completed_count = 0
+    total = len(test_cases)
 
     async def run_single(index: int, test_case: dict):
+        nonlocal completed_count
         async with semaphore:
             try:
                 # Build input data (everything except expected column)
@@ -49,8 +51,9 @@ async def run_tests(
                     "error": str(e),
                 }
 
+            completed_count += 1
             if on_progress:
-                await on_progress(index + 1, len(test_cases))
+                await on_progress(completed_count, total)
             return result
 
     tasks = [run_single(i, tc) for i, tc in enumerate(test_cases)]
