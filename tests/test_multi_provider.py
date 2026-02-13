@@ -8,26 +8,12 @@ from __future__ import annotations
 
 import pytest
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
 
 # ─── Config Tests ───────────────────────────────────────────────────────────
 
 
 class TestSettingsProviderDetection:
     """Test Settings.get_providers() with multiple dynamic contexts."""
-
-    @pytest.fixture
-    def make_settings(self):
-        """Factory to create Settings with arbitrary env vars."""
-        def _make(**overrides):
-            from backend.config import Settings
-            defaults = {
-                "OPENAI_API_KEY": "test-key",
-                "OPENAI_BASE_URL": "https://api.openai.com/v1",
-            }
-            defaults.update(overrides)
-            return Settings(**defaults)
-        return _make
 
     def test_legacy_openai_config(self, make_settings):
         """Legacy config with OpenAI URL -> OpenAI is default provider."""
@@ -173,20 +159,6 @@ class TestLLMClientJsonParsing:
 class TestProviderRegistry:
     """Test ProviderRegistry with multiple dynamic settings contexts."""
 
-    @pytest.fixture
-    def make_registry(self):
-        def _make(**overrides):
-            from backend.config import Settings
-            from backend.services.providers import ProviderRegistry
-            defaults = {
-                "OPENAI_API_KEY": "test-key",
-                "OPENAI_BASE_URL": "https://api.openai.com/v1",
-            }
-            defaults.update(overrides)
-            settings = Settings(**defaults)
-            return ProviderRegistry(settings)
-        return _make
-
     def test_list_providers_no_secrets(self, make_registry):
         """list_providers should NOT expose api_key."""
         registry = make_registry()
@@ -320,6 +292,7 @@ class TestPipelineResolveClient:
 
     @pytest.fixture
     def make_settings(self):
+        """Override shared make_settings with pipeline-specific defaults."""
         def _make(**overrides):
             from backend.config import Settings
             defaults = {
@@ -418,19 +391,9 @@ class TestPipelineResolveClient:
 class TestProvidersAPI:
     """Test provider API endpoints with FastAPI TestClient."""
 
-    @pytest.fixture
-    def client(self):
-        """Create a test client with mocked settings."""
-        import os
-        os.environ.setdefault("OPENAI_API_KEY", "test-key")
-        os.environ.setdefault("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        from fastapi.testclient import TestClient
-        from backend.main import app
-        return TestClient(app)
-
-    def test_get_providers(self, client):
+    def test_get_providers(self, app_client):
         """GET /api/providers returns providers and defaults."""
-        r = client.get("/api/providers")
+        r = app_client.get("/api/providers")
         assert r.status_code == 200
         data = r.json()
         assert "providers" in data
@@ -442,40 +405,40 @@ class TestProvidersAPI:
         assert "anthropic" in provider_ids
         assert "custom" in provider_ids
 
-    def test_providers_have_required_fields(self, client):
+    def test_providers_have_required_fields(self, app_client):
         """Each provider has id, name, configured."""
-        r = client.get("/api/providers")
+        r = app_client.get("/api/providers")
         for p in r.json()["providers"]:
             assert "id" in p
             assert "name" in p
             assert "configured" in p
             assert "api_key" not in p  # No secrets exposed
 
-    def test_defaults_have_all_stages(self, client):
+    def test_defaults_have_all_stages(self, app_client):
         """Defaults cover model, judge, improver with providers."""
-        r = client.get("/api/providers")
+        r = app_client.get("/api/providers")
         defaults = r.json()["defaults"]
         for key in ["model", "model_provider", "judge_model", "judge_provider", "improver_model", "improver_provider"]:
             assert key in defaults
 
-    def test_get_models_unknown_provider(self, client):
+    def test_get_models_unknown_provider(self, app_client):
         """GET /api/providers/nonexistent/models returns error."""
-        r = client.get("/api/providers/nonexistent/models")
+        r = app_client.get("/api/providers/nonexistent/models")
         assert r.status_code == 200
         data = r.json()
         assert data["models"] == []
         assert "error" in data
 
-    def test_get_models_unconfigured_provider(self, client):
+    def test_get_models_unconfigured_provider(self, app_client):
         """GET /api/providers/anthropic/models when not configured."""
-        r = client.get("/api/providers/anthropic/models")
+        r = app_client.get("/api/providers/anthropic/models")
         data = r.json()
         # Either returns empty with error or hardcoded list depending on config
         assert "models" in data
 
-    def test_custom_models_endpoint(self, client):
+    def test_custom_models_endpoint(self, app_client):
         """POST /api/providers/custom/models with invalid URL returns error."""
-        r = client.post("/api/providers/custom/models", json={
+        r = app_client.post("/api/providers/custom/models", json={
             "base_url": "https://invalid.example.com/v1",
             "api_key": "fake",
         })
