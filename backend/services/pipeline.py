@@ -26,7 +26,7 @@ _cancel_flags: dict[int, bool] = {}
 _feedback_events: dict[int, asyncio.Event] = {}
 _feedback_data: dict[int, str | None] = {}
 
-def submit_feedback(run_id: int, feedback: str):
+def submit_feedback(run_id: int, feedback: str) -> None:
     """Called from API to submit user feedback for a waiting pipeline."""
     _feedback_data[run_id] = feedback
     if not feedback:
@@ -35,13 +35,13 @@ def submit_feedback(run_id: int, feedback: str):
     if event:
         event.set()
 
-def request_stop(run_id: int):
+def request_stop(run_id: int) -> None:
     _cancel_flags[run_id] = True
 
 def is_cancelled(run_id: int) -> bool:
     return _cancel_flags.get(run_id, False)
 
-async def _add_log(session: AsyncSession, run_id: int, stage: str, level: str, message: str, iteration_id: int | None = None, data: dict | None = None):
+async def _add_log(session: AsyncSession, run_id: int, stage: str, level: str, message: str, iteration_id: int | None = None, data: dict | None = None) -> None:
     log = Log(run_id=run_id, iteration_id=iteration_id, stage=stage, level=level, message=message, data=data)
     session.add(log)
     await session.flush()
@@ -79,7 +79,7 @@ def _resolve_client(settings: Settings, config: dict, stage: str) -> tuple:
     return client, model_name
 
 
-async def run_pipeline(run_id: int, session_factory, settings: Settings, test_cases: list[dict], expected_col: str, input_columns: list[str]):
+async def run_pipeline(run_id: int, session_factory, settings: Settings, test_cases: list[dict], expected_col: str, input_columns: list[str]) -> None:
     """Main pipeline orchestrator. Runs as an asyncio task."""
     _cancel_flags[run_id] = False
 
