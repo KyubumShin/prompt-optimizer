@@ -1,19 +1,36 @@
 import asyncio
 import json
+import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
-from ..database import get_db
+from ..database import get_db, async_session_factory
 from ..models import Run, Iteration, TestResult, Log
 from ..schemas import RunCreate, RunResponse, RunDetailResponse, IterationResponse, IterationDetailResponse, TestResultResponse, LogResponse, RunConfig, FeedbackSubmit
 from ..config import Settings, get_settings
 from ..services.csv_loader import parse_csv, validate_prompt_columns
 from ..services.pipeline import run_pipeline, request_stop, submit_feedback
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/runs", tags=["runs"])
+
+# Track background pipeline tasks to prevent silent exception loss
+_pipeline_tasks: dict[int, asyncio.Task] = {}
+
+
+def _on_pipeline_done(run_id: int, task: asyncio.Task) -> None:
+    """Callback to log unhandled pipeline exceptions and clean up task reference."""
+    _pipeline_tasks.pop(run_id, None)
+    if task.cancelled():
+        logger.info(f"Pipeline task for run {run_id} was cancelled")
+        return
+    exc = task.exception()
+    if exc:
+        logger.error(f"Pipeline task for run {run_id} failed with unhandled exception: {exc}", exc_info=exc)
 
 
 @router.post("", response_model=RunResponse)
@@ -62,11 +79,12 @@ async def create_run(
     await db.commit()
     await db.refresh(run)
 
-    # Launch pipeline as background task
-    from ..database import async_session_factory
-    asyncio.create_task(
+    # Launch pipeline as background task with error tracking
+    task = asyncio.create_task(
         run_pipeline(run.id, async_session_factory, settings, dataset.rows, expected_column, input_columns)
     )
+    _pipeline_tasks[run.id] = task
+    task.add_done_callback(lambda t: _on_pipeline_done(run.id, t))
 
     return run
 
@@ -154,7 +172,6 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(404, "Run not found")
     if run.status == "running":
         request_stop(run_id)
-        import asyncio
         await asyncio.sleep(1)
     await db.delete(run)
     await db.commit()
