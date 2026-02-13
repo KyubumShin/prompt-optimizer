@@ -178,10 +178,10 @@ http://localhost:5173
 | `OPENAI_MODEL` | 테스트 단계용 모델 | `gpt-4o-mini` |
 | `JUDGE_MODEL` | 심사 단계용 모델 | `gpt-4o-mini` |
 | `IMPROVER_MODEL` | 개선 단계용 모델 | `gpt-4o` |
-| `GEMINI_API_KEY` | Google Gemini API 키 (선택, 레거시 설정에서 자동 감지) | - |
+| `GEMINI_API_KEY` | Google Gemini API 키 | - |
 | `GEMINI_BASE_URL` | Gemini API 엔드포인트 | `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | `ANTHROPIC_API_KEY` | Anthropic API 키 (선택) | - |
-| `OPENAI_PROVIDER_API_KEY` | 레거시가 Gemini를 가리킬 때 명시적 OpenAI 키 (선택) | - |
+| `OPENAI_PROVIDER_API_KEY` | 명시적 OpenAI 프로바이더 API 키 | - |
 | `OPENAI_PROVIDER_BASE_URL` | OpenAI 프로바이더 엔드포인트 | `https://api.openai.com/v1` |
 | `CORS_ORIGINS` | 쉼표로 구분된 허용 오리진 | `http://localhost:5173,http://localhost:3000` |
 | `DATABASE_URL` | SQLAlchemy 데이터베이스 URL | `sqlite+aiosqlite:///./prompt_optimizer.db` |
@@ -191,18 +191,6 @@ http://localhost:5173
 | `DEFAULT_TEMPERATURE` | LLM 온도 | `0.7` |
 | `CONVERGENCE_THRESHOLD` | 정체 감지를 위한 점수 개선 임계값 | `0.02` |
 | `CONVERGENCE_PATIENCE` | 중지 전 임계값 미만의 연속 라운드 수 | `2` |
-
-### 대체 LLM 제공업체 사용 (레거시)
-
-애플리케이션은 OpenAI 호환 API를 지원합니다. 예를 들어, Google Gemini를 사용하려면:
-
-```bash
-OPENAI_API_KEY=your_google_api_key
-OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-OPENAI_MODEL=gemini-1.5-flash
-JUDGE_MODEL=gemini-1.5-flash
-IMPROVER_MODEL=gemini-1.5-pro
-```
 
 ### 멀티 프로바이더 지원
 
@@ -262,9 +250,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 **시나리오 3: 단일 프로바이더**
 - 모든 단계: `gpt-4o-mini` (OpenAI)
 
-#### 하위 호환성
+#### 기본 동작
 
-기존 단일 프로바이더 설정은 계속 작동합니다. `model_provider` 필드가 지정되지 않으면 시스템은 레거시 `OPENAI_API_KEY` 및 `OPENAI_BASE_URL` 설정을 사용합니다.
+`model_provider` 필드가 지정되지 않으면 시스템은 `OPENAI_API_KEY` 및 `OPENAI_BASE_URL` 설정을 사용합니다.
 
 ## 사용 방법
 

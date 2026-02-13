@@ -178,10 +178,10 @@ The application is configured via environment variables. Create a `.env` file in
 | `OPENAI_MODEL` | Model for test stage | `gpt-4o-mini` |
 | `JUDGE_MODEL` | Model for judge stage | `gpt-4o-mini` |
 | `IMPROVER_MODEL` | Model for improve stage | `gpt-4o` |
-| `GEMINI_API_KEY` | Google Gemini API key (auto-detected from legacy config) | (optional) |
+| `GEMINI_API_KEY` | Google Gemini API key | (optional) |
 | `GEMINI_BASE_URL` | Gemini API endpoint | `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | `ANTHROPIC_API_KEY` | Anthropic API key | (optional) |
-| `OPENAI_PROVIDER_API_KEY` | Explicit OpenAI key when legacy points to Gemini | (optional) |
+| `OPENAI_PROVIDER_API_KEY` | Explicit OpenAI provider API key | (optional) |
 | `OPENAI_PROVIDER_BASE_URL` | OpenAI provider endpoint | `https://api.openai.com/v1` |
 | `CORS_ORIGINS` | Comma-separated allowed origins | `http://localhost:5173,http://localhost:3000` |
 | `DATABASE_URL` | SQLAlchemy database URL | `sqlite+aiosqlite:///./prompt_optimizer.db` |
@@ -191,18 +191,6 @@ The application is configured via environment variables. Create a `.env` file in
 | `DEFAULT_TEMPERATURE` | LLM temperature | `0.7` |
 | `CONVERGENCE_THRESHOLD` | Score improvement threshold for stagnation detection | `0.02` |
 | `CONVERGENCE_PATIENCE` | Consecutive rounds below threshold before stopping | `2` |
-
-### Using Alternative LLM Providers
-
-The application supports any OpenAI-compatible API. For example, to use Google Gemini:
-
-```bash
-OPENAI_API_KEY=your_google_api_key
-OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-OPENAI_MODEL=gemini-1.5-flash
-JUDGE_MODEL=gemini-1.5-flash
-IMPROVER_MODEL=gemini-1.5-pro
-```
 
 ## Multi-Provider Support
 
@@ -247,9 +235,9 @@ Use fast, cost-effective models for testing, and powerful models for judging and
 }
 ```
 
-### Backward Compatibility
+### Default Behavior
 
-The system remains backward compatible with single-provider configurations. If you don't specify provider fields, it uses the legacy `OPENAI_API_KEY` and `OPENAI_BASE_URL` for all stages.
+If you don't specify provider fields, the system uses `OPENAI_API_KEY` and `OPENAI_BASE_URL` for all stages.
 
 ## How to Use
 
