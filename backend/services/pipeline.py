@@ -17,6 +17,8 @@ from .event_manager import event_manager
 
 logger = logging.getLogger(__name__)
 
+FEEDBACK_TIMEOUT_SECONDS = 1800  # 30 minutes
+
 # Track cancellation flags per run
 _cancel_flags: dict[int, bool] = {}
 
@@ -208,7 +210,7 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                     _feedback_events[run_id] = feedback_event
                     _feedback_data[run_id] = None
                     try:
-                        await asyncio.wait_for(feedback_event.wait(), timeout=1800)  # 30 min timeout
+                        await asyncio.wait_for(feedback_event.wait(), timeout=FEEDBACK_TIMEOUT_SECONDS)
                     except asyncio.TimeoutError:
                         await _add_log(session, run_id, "system", "info", f"Iteration {iter_num}: Feedback timeout, continuing", iteration.id)
                     finally:

@@ -12,6 +12,9 @@ from ..services.event_manager import event_manager
 
 router = APIRouter(prefix="/api/runs", tags=["stream"])
 
+SSE_KEEPALIVE_TIMEOUT_SECONDS = 30.0
+
+
 @router.get("/{run_id}/stream")
 async def stream_run(run_id: int, db: AsyncSession = Depends(get_db)):
     run = await db.get(Run, run_id)
@@ -24,7 +27,7 @@ async def stream_run(run_id: int, db: AsyncSession = Depends(get_db)):
         try:
             while True:
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    event = await asyncio.wait_for(queue.get(), timeout=SSE_KEEPALIVE_TIMEOUT_SECONDS)
                     yield f"event: {event.event}\ndata: {json.dumps(event.data)}\n\n"
 
                     # Terminal events

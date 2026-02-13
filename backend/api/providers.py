@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -10,8 +11,14 @@ from ..services.providers import ProviderRegistry
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
 
-def _get_registry(settings: Settings = Depends(get_settings)) -> ProviderRegistry:
-    return ProviderRegistry(settings)
+@lru_cache(maxsize=1)
+def _build_registry() -> ProviderRegistry:
+    """Cached singleton: settings are env-based and don't change at runtime."""
+    return ProviderRegistry(get_settings())
+
+
+def _get_registry() -> ProviderRegistry:
+    return _build_registry()
 
 
 class CustomModelsRequest(BaseModel):

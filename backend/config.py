@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     OPENAI_PROVIDER_API_KEY: Optional[str] = None
     OPENAI_PROVIDER_BASE_URL: str = "https://api.openai.com/v1"
 
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+
     DATABASE_URL: str = "sqlite+aiosqlite:///./prompt_optimizer.db"
     DEFAULT_CONCURRENCY: int = 5
     DEFAULT_MAX_ITERATIONS: int = 10
