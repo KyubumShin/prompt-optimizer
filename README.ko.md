@@ -55,10 +55,12 @@ prompt-optimizer/
 │   ├── models.py                  # 4 tables: runs, iterations, test_results, logs
 │   ├── schemas.py                 # Pydantic request/response models
 │   ├── api/
-│   │   ├── runs.py                # CRUD + stop endpoints
-│   │   └── stream.py              # SSE endpoint for live updates
+│   │   ├── runs.py                # CRUD + 중지 + 피드백 엔드포인트
+│   │   ├── stream.py              # SSE endpoint for live updates
+│   │   └── providers.py           # 프로바이더 디스커버리 + 모델 목록
 │   ├── services/
-│   │   ├── llm_client.py          # AsyncOpenAI wrapper with retry logic
+│   │   ├── llm_client.py          # BaseLLMClient ABC + OpenAI/Anthropic 구현체 (공유 재시도 로직)
+│   │   ├── providers.py           # ProviderRegistry, 모델 필터링
 │   │   ├── csv_loader.py          # CSV parse + validate
 │   │   ├── pipeline.py            # Main orchestrator loop
 │   │   ├── event_manager.py       # SSE event queue manager
@@ -92,9 +94,16 @@ prompt-optimizer/
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── tsconfig.json
+├── docs/
+│   └── architecture.md            # 아키텍처 문서
 └── tests/
+    ├── conftest.py                # 공유 픽스처
+    ├── test_multi_provider.py     # 51개 유닛 테스트
+    ├── test_e2e.py                # End-to-end test suite
+    ├── test_e2e_multi_column.py   # 다중 컬럼 E2E 테스트
     ├── test_data.csv              # 10 example test cases
-    └── test_e2e.py                # End-to-end test suite
+    ├── test_data_multi_column.csv # 다중 컬럼 예제
+    └── test_data_ko.csv           # 한국어 예제
 ```
 
 ## 빠른 시작
@@ -169,6 +178,12 @@ http://localhost:5173
 | `OPENAI_MODEL` | 테스트 단계용 모델 | `gpt-4o-mini` |
 | `JUDGE_MODEL` | 심사 단계용 모델 | `gpt-4o-mini` |
 | `IMPROVER_MODEL` | 개선 단계용 모델 | `gpt-4o` |
+| `GEMINI_API_KEY` | Google Gemini API 키 (선택, 레거시 설정에서 자동 감지) | - |
+| `GEMINI_BASE_URL` | Gemini API 엔드포인트 | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `ANTHROPIC_API_KEY` | Anthropic API 키 (선택) | - |
+| `OPENAI_PROVIDER_API_KEY` | 레거시가 Gemini를 가리킬 때 명시적 OpenAI 키 (선택) | - |
+| `OPENAI_PROVIDER_BASE_URL` | OpenAI 프로바이더 엔드포인트 | `https://api.openai.com/v1` |
+| `CORS_ORIGINS` | 쉼표로 구분된 허용 오리진 | `http://localhost:5173,http://localhost:3000` |
 | `DATABASE_URL` | SQLAlchemy 데이터베이스 URL | `sqlite+aiosqlite:///./prompt_optimizer.db` |
 | `DEFAULT_CONCURRENCY` | 동시 LLM 요청 수 | `5` |
 | `DEFAULT_MAX_ITERATIONS` | 최대 최적화 반복 횟수 | `10` |
@@ -177,7 +192,7 @@ http://localhost:5173
 | `CONVERGENCE_THRESHOLD` | 정체 감지를 위한 점수 개선 임계값 | `0.02` |
 | `CONVERGENCE_PATIENCE` | 중지 전 임계값 미만의 연속 라운드 수 | `2` |
 
-### 대체 LLM 제공업체 사용
+### 대체 LLM 제공업체 사용 (레거시)
 
 애플리케이션은 OpenAI 호환 API를 지원합니다. 예를 들어, Google Gemini를 사용하려면:
 
@@ -188,6 +203,68 @@ OPENAI_MODEL=gemini-1.5-flash
 JUDGE_MODEL=gemini-1.5-flash
 IMPROVER_MODEL=gemini-1.5-pro
 ```
+
+### 멀티 프로바이더 지원
+
+v2.0부터 파이프라인의 각 단계(테스트, 심사, 개선)가 서로 다른 LLM 프로바이더를 사용할 수 있습니다. 이를 통해 각 작업에 가장 적합한 모델을 선택할 수 있습니다.
+
+#### 지원 프로바이더
+
+- **OpenAI** - GPT-4, GPT-4o, GPT-3.5 등
+- **Google Gemini** - Gemini 1.5 Pro, Flash 등
+- **Anthropic** - Claude 3.5 Sonnet, Opus, Haiku
+- **사용자 정의 엔드포인트** - OpenAI 호환 API
+
+#### 프로바이더별 구성
+
+각 파이프라인 단계는 독립적으로 프로바이더를 지정할 수 있습니다:
+
+```bash
+# OpenAI 프로바이더
+OPENAI_PROVIDER_API_KEY=sk-...
+OPENAI_PROVIDER_BASE_URL=https://api.openai.com/v1
+
+# Gemini 프로바이더
+GEMINI_API_KEY=AIza...
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+
+# Anthropic 프로바이더
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+#### 단계별 프로바이더 선택
+
+실행 생성 시 각 단계에 대해 프로바이더와 모델을 지정할 수 있습니다:
+
+```json
+{
+  "model": "gpt-4o-mini",
+  "model_provider": "openai",
+  "judge_model": "claude-3-5-sonnet-20241022",
+  "judge_provider": "anthropic",
+  "improver_model": "gemini-1.5-pro",
+  "improver_provider": "gemini"
+}
+```
+
+#### 프로바이더 예시
+
+**시나리오 1: 비용 최적화**
+- 테스트: `gpt-4o-mini` (OpenAI) - 빠르고 저렴
+- 심사: `gemini-1.5-flash` (Gemini) - 빠른 평가
+- 개선: `claude-3-5-sonnet` (Anthropic) - 고품질 개선
+
+**시나리오 2: 품질 우선**
+- 테스트: `gpt-4o` (OpenAI)
+- 심사: `claude-3-5-sonnet` (Anthropic)
+- 개선: `gemini-1.5-pro` (Gemini)
+
+**시나리오 3: 단일 프로바이더**
+- 모든 단계: `gpt-4o-mini` (OpenAI)
+
+#### 하위 호환성
+
+기존 단일 프로바이더 설정은 계속 작동합니다. `model_provider` 필드가 지정되지 않으면 시스템은 레거시 `OPENAI_API_KEY` 및 `OPENAI_BASE_URL` 설정을 사용합니다.
 
 ## 사용 방법
 
@@ -217,11 +294,13 @@ Translate the following text to French: {text}
 ### 4. 설정 구성
 
 - **모델 선택**: 테스트, 심사, 개선을 위한 모델을 선택합니다
+- **프로바이더 선택**: 각 단계에 대해 LLM 프로바이더를 선택합니다 (OpenAI, Gemini, Anthropic)
 - **최대 반복 횟수**: 최대 최적화 라운드 수 (기본값: 10)
 - **목표 점수**: 평균 점수가 이 임계값에 도달하면 중지 (0-1, 기본값: 0.9)
 - **동시성**: 병렬 LLM 요청 수 (기본값: 5)
 - **온도**: LLM 온도 설정 (기본값: 0.7)
 - **사용자 지정 심사 프롬프트**: 선택적 사용자 지정 채점 기준
+- **휴먼 피드백**: 각 반복 후 수동 피드백 활성화 (선택적)
 
 ### 5. 진행 상황 모니터링
 
@@ -232,6 +311,7 @@ Translate the following text to French: {text}
 - 반복 간 프롬프트 비교
 - 심사자 추론이 포함된 테스트 결과
 - 상세 로그
+- 휴먼 피드백 요청 (활성화된 경우)
 
 ### 6. 결과 검토
 
@@ -284,6 +364,15 @@ source_lang,target_lang,text,expected_output
 | `GET` | `/api/runs/{id}` | 반복이 포함된 실행 세부 정보 가져오기 |
 | `DELETE` | `/api/runs/{id}` | 실행 및 모든 관련 데이터 삭제 |
 | `POST` | `/api/runs/{id}/stop` | 실행 중인 최적화 중지 |
+| `POST` | `/api/runs/{id}/feedback` | 실행 중인 파이프라인에 휴먼 피드백 제출 |
+
+### 프로바이더 관리
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/api/providers` | 모든 프로바이더 목록 (구성 상태 및 기본값 포함) |
+| `GET` | `/api/providers/{id}/models` | 프로바이더의 사용 가능한 모델 목록 |
+| `POST` | `/api/providers/custom/models` | 사용자 정의 엔드포인트에서 모델 목록 |
 
 ### 반복 데이터
 
@@ -317,6 +406,7 @@ curl -X POST http://localhost:8000/api/runs \
 - `stage_start` - 파이프라인 단계 시작 (test, judge, summarize, improve)
 - `test_progress` - 테스트 단계 진행 업데이트
 - `iteration_complete` - 점수와 함께 반복 완료
+- `feedback_requested` - 피드백 요청 (반복 완료 후 피드백 대기)
 - `converged` - 파이프라인 수렴 (목표 도달 또는 정체)
 - `completed` - 파이프라인 완료 (최대 반복 도달)
 - `stopped` - 사용자가 파이프라인 중지
@@ -328,7 +418,8 @@ curl -X POST http://localhost:8000/api/runs \
 - **FastAPI** - 최신 비동기 웹 프레임워크
 - **SQLAlchemy 2.0** - 관계 로딩이 있는 비동기 ORM
 - **SQLite** - 비동기 지원이 있는 임베디드 데이터베이스 (aiosqlite)
-- **OpenAI Python SDK** - 스트리밍 지원이 있는 LLM 클라이언트
+- **OpenAI Python SDK** - 멀티 프로바이더 지원이 있는 LLM 클라이언트
+- **Anthropic Python SDK** - 네이티브 Claude API 클라이언트
 - **Pydantic** - 데이터 검증 및 설정 관리
 
 ### 프론트엔드
@@ -346,19 +437,35 @@ curl -X POST http://localhost:8000/api/runs \
 
 ## 테스트 실행
 
-프로젝트에는 전체 최적화 파이프라인을 검증하는 end-to-end 테스트 스위트가 포함되어 있습니다.
+프로젝트에는 멀티 프로바이더 기능과 전체 최적화 파이프라인을 검증하는 포괄적인 테스트 스위트가 포함되어 있습니다.
 
-### 사전 요구 사항
+### 유닛 테스트
 
-백엔드 서버가 실행 중인지 확인합니다:
+멀티 프로바이더 로직에 대한 51개의 유닛 테스트 (서버 불필요):
+
 ```bash
-python3 -m uvicorn backend.main:app --reload --port 8000
+python3 -m pytest tests/test_multi_provider.py -v
 ```
 
-### 테스트 실행
+테스트 범위:
+- 프로바이더 등록 및 디스커버리
+- 모델 필터링 및 검증
+- LLM 클라이언트 생성
+- 재시도 로직
+- 오류 처리
+- 설정 마이그레이션
+
+### E2E 테스트
+
+전체 파이프라인 테스트 (실행 중인 서버 필요):
 
 ```bash
+# 백엔드 서버 시작
+python3 -m uvicorn backend.main:app --reload --port 8000
+
+# 새 터미널에서
 python3 tests/test_e2e.py
+python3 tests/test_e2e_multi_column.py
 ```
 
 테스트 스위트에는 다음이 포함됩니다:
@@ -368,6 +475,7 @@ python3 tests/test_e2e.py
 - 프롬프트 개선 확인
 - 수렴 동작 검증
 - 중지 기능 테스트
+- 다중 컬럼 입력 처리
 - 데이터 정리 검증
 
 ## 수렴 기준
@@ -425,6 +533,14 @@ Iteration 5: avg_score = 0.865 (improvement: 0.005) <- 임계값 미만
 - 조정 가능한 수렴 기준
 - 파이프라인 단계별 모델 선택
 - 비용/속도 트레이드오프를 위한 동시성 제어
+- 멀티 프로바이더 지원 (OpenAI, Gemini, Anthropic)
+
+### 휴먼 피드백
+- 실행 설정에서 `human_feedback_enabled` 활성화
+- 각 반복의 요약 단계 후 파이프라인 일시 중지
+- 사용자가 개선자에 통합될 서면 피드백 제공 가능
+- 30분 타임아웃 후 자동 계속
+- 피드백은 다음 개선 프롬프트에 포함되어 사용자 요구사항 반영
 
 ## 문제 해결
 
