@@ -46,6 +46,7 @@ class Iteration(Base):
     max_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     improvement_reasoning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    improver_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
     # Relationships

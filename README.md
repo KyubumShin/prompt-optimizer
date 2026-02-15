@@ -29,13 +29,16 @@ The system runs a 4-stage optimization loop that continues until the prompt reac
               |     | Stage 3: SUMMARIZE|
               |     | Aggregate judge  |
               |     | reasoning, find  |
-              |     | failure patterns |
+              |     | failure+success  |
+              |     | patterns         |
               |     +--------+---------+
               |              |
               |     +--------v---------+
               |     | Stage 4: IMPROVE |
               |     | LLM generates    |
               |     | better prompt    |
+              |     | (with judge      |
+              |     |  reasoning)      |
               |     +--------+---------+
               |              |
               |    [Converged?]---Yes---> Done!
@@ -290,6 +293,7 @@ When the run completes (converged or max iterations reached):
 - View the final optimized prompt
 - Compare prompts across all iterations
 - Examine individual test case results and judge reasoning
+- View the full improver prompt (collapsible "Improver Prompt (Step 4)" section on each iteration detail page)
 - Review the complete optimization log
 - Copy the best prompt for use in production
 
@@ -507,7 +511,9 @@ Iteration 5: avg_score = 0.865 (improvement: 0.005) <- below threshold
 - Side-by-side prompt comparison
 - Improvement reasoning from LLM
 - Failure pattern summaries
+- Success pattern analysis (what's working well)
 - Judge feedback for each test case
+- Full improver prompt visibility (see exactly what the LLM received in Step 4)
 
 ### Human Feedback Integration
 - Enable `human_feedback_enabled` in run configuration

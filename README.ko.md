@@ -29,13 +29,16 @@
               |     | Stage 3: SUMMARIZE|
               |     | Aggregate judge  |
               |     | reasoning, find  |
-              |     | failure patterns |
+              |     | failure+success  |
+              |     | patterns         |
               |     +--------+---------+
               |              |
               |     +--------v---------+
               |     | Stage 4: IMPROVE |
               |     | LLM generates    |
               |     | better prompt    |
+              |     | (with judge      |
+              |     |  reasoning)      |
               |     +--------+---------+
               |              |
               |    [Converged?]---Yes---> Done!
@@ -307,6 +310,7 @@ Translate the following text to French: {text}
 - 최종 최적화된 프롬프트 보기
 - 모든 반복에서 프롬프트 비교
 - 개별 테스트 케이스 결과 및 심사자 추론 검토
+- 개선자 프롬프트 전문 보기 (각 반복 상세 페이지의 접을 수 있는 "Improver Prompt (Step 4)" 섹션)
 - 전체 최적화 로그 검토
 - 프로덕션에서 사용하기 위해 최상의 프롬프트 복사
 
@@ -514,7 +518,9 @@ Iteration 5: avg_score = 0.865 (improvement: 0.005) <- 임계값 미만
 - 나란히 프롬프트 비교
 - LLM의 개선 추론
 - 실패 패턴 요약
+- 성공 패턴 분석 (잘 작동하는 부분 파악)
 - 각 테스트 케이스에 대한 심사자 피드백
+- 개선자 프롬프트 전문 보기 (Step 4에서 LLM이 받은 정확한 프롬프트 확인)
 
 ### 유연한 구성
 - 도메인별 채점을 위한 사용자 지정 심사 프롬프트

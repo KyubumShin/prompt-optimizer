@@ -155,7 +155,7 @@ runs (1) ──── (*) iterations (1) ──── (*) test_results
 ```
 
 - **runs**: Optimization run metadata (prompt, config, status, best result)
-- **iterations**: Per-iteration data (prompt version, scores, summary, improvement reasoning)
+- **iterations**: Per-iteration data (prompt version, scores, summary, improvement reasoning, improver prompt)
 - **test_results**: Per-test-case results (input, expected, actual, score, judge reasoning)
 - **logs**: Structured pipeline logs (stage, level, message, optional JSON data)
 
@@ -173,10 +173,10 @@ All relationships use cascade delete. SQLAlchemy 2.0 Mapped types with async ses
 1. For each iteration:
    a. **Test**: Run prompt on all test cases (concurrent with semaphore)
    b. **Judge**: Score each result (concurrent)
-   c. **Summarize**: Aggregate scores, identify failure patterns
+   c. **Summarize**: Aggregate scores, identify failure and success patterns
    d. **(Optional) Human Feedback**: Emit SSE event, wait for input
    e. **Check convergence**: Target reached? Stagnated? Max iterations?
-   f. **Improve**: LLM generates new prompt based on summary
+   f. **Improve**: LLM generates new prompt based on summary + raw judge reasoning (failures and low-scoring successes). The full improver prompt is stored for transparency.
 2. Each stage emits SSE events for progress tracking
 3. Results persisted to DB after each iteration
 

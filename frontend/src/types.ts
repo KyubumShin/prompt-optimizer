@@ -41,6 +41,7 @@ export interface Iteration {
   max_score: number | null
   summary: string | null
   improvement_reasoning: string | null
+  improver_prompt: string | null
   created_at: string
 }
 

@@ -62,6 +62,21 @@ export default function IterationDetail() {
         </div>
       )}
 
+      {/* Improver Prompt (Step 4) */}
+      {iteration.improver_prompt && (
+        <details className="bg-white rounded-lg border">
+          <summary className="p-4 cursor-pointer select-none hover:bg-gray-50">
+            <h2 className="text-lg font-semibold inline">Improver Prompt (Step 4)</h2>
+            <span className="text-sm text-gray-500 ml-2">Click to expand</span>
+          </summary>
+          <div className="px-4 pb-4">
+            <pre className="bg-gray-50 border rounded-lg p-4 text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
+              {iteration.improver_prompt}
+            </pre>
+          </div>
+        </details>
+      )}
+
       {/* Test Results */}
       <div className="bg-white rounded-lg border p-4">
         <h2 className="text-lg font-semibold mb-4">Test Results</h2>

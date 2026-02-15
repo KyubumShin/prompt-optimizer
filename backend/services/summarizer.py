@@ -18,14 +18,19 @@ Test Results Summary:
 - Max Score: {max_score:.2f}
 - Total Cases: {total_cases}
 - Failed Cases (score < 0.7): {failed_count}
+- Successful Cases (score >= 0.7): {success_count}
 
 Detailed Failures (score < 0.7):
 {failure_details}
 
-Analyze the failure patterns and provide a JSON response:
+Successful Cases (score >= 0.7):
+{success_details}
+
+Analyze both failure and success patterns. Understand what works well and what doesn't. Provide a JSON response:
 {{
-    "summary": "Brief overview of performance",
+    "summary": "Brief overview of performance including what works and what fails",
     "failure_patterns": ["pattern1", "pattern2"],
+    "success_patterns": ["what_works_well1", "what_works_well2"],
     "specific_issues": ["issue1", "issue2"],
     "suggestions": ["suggestion1", "suggestion2"]
 }}"""
@@ -44,8 +49,9 @@ async def summarize_results(
     min_score = min(scores) if scores else 0.0
     max_score = max(scores) if scores else 0.0
 
-    # Collect failures
+    # Collect failures and successes
     failures = []
+    successes = []
     for test, judge in zip(test_results, judge_results_list):
         if judge["score"] < FAILURE_SCORE_THRESHOLD:
             failures.append(
@@ -55,8 +61,17 @@ async def summarize_results(
                 f"    Actual: {test.get('actual', 'N/A')}\n"
                 f"    Reasoning: {judge['reasoning']}"
             )
+        else:
+            successes.append(
+                f"  Case {test['index']}: score={judge['score']:.2f}\n"
+                f"    Input: {test['input_data']}\n"
+                f"    Expected: {test['expected']}\n"
+                f"    Actual: {test.get('actual', 'N/A')}\n"
+                f"    Reasoning: {judge['reasoning']}"
+            )
 
     failure_details = "\n".join(failures) if failures else "No significant failures."
+    success_details = "\n".join(successes) if successes else "No successful cases."
 
     prompt = SUMMARIZE_PROMPT.format(
         prompt_template=prompt_template,
@@ -65,7 +80,9 @@ async def summarize_results(
         max_score=max_score,
         total_cases=len(test_results),
         failed_count=len(failures),
+        success_count=len(successes),
         failure_details=failure_details,
+        success_details=success_details,
     )
 
     if summary_language and summary_language != "English":
@@ -79,6 +96,7 @@ async def summarize_results(
         "max_score": max_score,
         "summary": response.get("summary", ""),
         "failure_patterns": response.get("failure_patterns", []),
+        "success_patterns": response.get("success_patterns", []),
         "specific_issues": response.get("specific_issues", []),
         "suggestions": response.get("suggestions", []),
     }

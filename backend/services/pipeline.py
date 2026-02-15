@@ -271,9 +271,12 @@ async def run_pipeline(run_id: int, session_factory, settings: Settings, test_ca
                         improver_client, current_prompt, summary,
                         available_columns=input_columns, model=improver_model, target_score=target_score,
                         summary_language=summary_language,
+                        judge_results_list=judge_results_data,
+                        test_results_data=test_results_data,
                     )
 
                     iteration.improvement_reasoning = improvement["reasoning"]
+                    iteration.improver_prompt = improvement.get("improver_prompt")
                     current_prompt = improvement["improved_prompt"]
 
                     await _add_log(session, run_id, "improve", "info",

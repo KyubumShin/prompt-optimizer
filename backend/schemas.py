@@ -60,6 +60,7 @@ class IterationResponse(BaseModel):
     max_score: Optional[float]
     summary: Optional[str]
     improvement_reasoning: Optional[str]
+    improver_prompt: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
